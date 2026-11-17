@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#1f4e78">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/favicon.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Absensi KKB">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Absensi PT KSM Katering Batam</title>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
@@ -53,6 +60,14 @@
     <h1>Absensi PT KSM Katering Batam</h1>
     <p id="jam">--:--:--</p>
   </header>
+
+  <!-- PASANG DI LAYAR HP -->
+  <div id="kartuPasang" class="card info hidden">
+    <b>📲 Pasang "Absensi KKB" di layar HP</b>
+    <div class="small" id="pasangInfo" style="margin-top:4px">Agar absen cukup sentuh ikon, tanpa buka browser.</div>
+    <button class="primary" id="btnPasang" onclick="pasangApp()">Pasang Aplikasi</button>
+    <button class="ghost" style="margin-top:6px;padding:8px;font-size:13px" onclick="tutupPasang()">Nanti saja</button>
+  </div>
 
   <!-- LOGIN -->
   <div id="vLogin" class="card">
@@ -110,6 +125,40 @@
 </div>
 
 <script>
+/* ---------- PASANG SEBAGAI APLIKASI (PWA) ---------- */
+let promptPasang = null;
+const sudahTerpasang = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+function tampilPasang() {
+  try { if (sudahTerpasang() || localStorage.getItem('kkb_tutup_pasang') === new Date().toDateString()) return; } catch (e) {}
+  if (!promptPasang && !isIOS) return;
+  if (isIOS) {
+    document.getElementById('pasangInfo').innerHTML =
+      'Di iPhone: tekan tombol <b>Bagikan</b> (kotak dengan panah ke atas) di Safari, lalu pilih <b>Tambah ke Layar Utama</b>.';
+    document.getElementById('btnPasang').classList.add('hidden');
+  }
+  document.getElementById('kartuPasang').classList.remove('hidden');
+}
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); promptPasang = e; tampilPasang(); });
+window.addEventListener('appinstalled', () => document.getElementById('kartuPasang').classList.add('hidden'));
+async function pasangApp() {
+  if (!promptPasang) {
+    document.getElementById('pasangInfo').innerHTML = 'Buka menu browser (⋮) lalu pilih <b>Instal aplikasi</b> / <b>Tambahkan ke layar utama</b>.';
+    return;
+  }
+  promptPasang.prompt();
+  const r = await promptPasang.userChoice;
+  promptPasang = null;
+  if (r.outcome === 'accepted') document.getElementById('kartuPasang').classList.add('hidden');
+}
+function tutupPasang() {
+  try { localStorage.setItem('kkb_tutup_pasang', new Date().toDateString()); } catch (e) {}
+  document.getElementById('kartuPasang').classList.add('hidden');
+}
+document.addEventListener('DOMContentLoaded', () => { if (isIOS) tampilPasang(); });
+
 let token = null, user = null, stream = null, scanning = false;
 let qrText = null, fotoData = null, pos = null, aksiTertunda = null;
 let ciriWajah = null, modelSiap = null, daftarCiri = [], daftarFoto = null;
