@@ -7,11 +7,13 @@
 <title>Absensi PT KSM Katering Batam</title>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.js"></script>
 <script>
   /* ====== KONFIGURASI — ISI 2 BARIS INI ====== */
-  const GOOGLE_CLIENT_ID = '59886614153-mhgngr8lgbiunbf6jor0igvisrr5cthf.apps.googleusercontent.com';
-  const API_URL = 'https://script.google.com/macros/s/AKfycbzz7QDdLoLHfoa6EjNQHwRUlH0j9NuFVTHYxfF8ydUCV69d-P0azJAIvSnknVpW-1oKmg/exec';
+  const GOOGLE_CLIENT_ID = 'ISI_CLIENT_ID.apps.googleusercontent.com';
+  const API_URL = 'https://script.google.com/macros/s/ISI_DEPLOYMENT_ID/exec';
   /* =========================================== */
+  const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model/';
 </script>
 <style>
   *{box-sizing:border-box}
@@ -25,6 +27,7 @@
   .masuk{background:#1b8a4b;color:#fff}
   .pulang{background:#c4561a;color:#fff}
   .ghost{background:#e4eaf0;color:#1d2733}
+  .primary{background:#1f4e78;color:#fff}
   button:disabled{opacity:.45;cursor:not-allowed}
   .row{display:flex;gap:10px}.row button{flex:1}
   .cam{position:relative;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:3/4}
@@ -62,12 +65,26 @@
   <div id="vAbsen" class="hidden">
     <div class="card info" id="profil"></div>
 
-    <div class="card">
+    <div class="card info hidden" id="kartuStatusWajah"></div>
+
+    <!-- DAFTAR WAJAH (sekali saja) -->
+    <div class="card hidden" id="kartuDaftar">
+      <b>📸 Daftarkan wajah Anda (sekali saja)</b>
+      <div class="small" style="margin:6px 0 8px">Ambil <b>3 foto</b> wajah Anda: lepas masker/kacamata hitam, tempat terang,
+        wajah memenuhi kotak. Foto ke-2 sedikit menoleh ke kiri, foto ke-3 sedikit ke kanan.
+        Wajah ini akan dicocokkan setiap kali Anda absen.</div>
+      <div class="cam" id="camDaftar"></div>
+      <button class="primary" id="btnAmbilWajah" onclick="ambilWajah()" disabled>Memuat pengenal wajah…</button>
+      <div id="daftarMsg"></div>
+    </div>
+
+    <div class="card" id="kartuAbsen">
       <div class="small" style="margin-bottom:8px">Berdiri di depan dinding QR. Pastikan <b>wajah dan QR code</b> sama-sama terlihat.</div>
       <div class="cam">
         <video id="video" autoplay playsinline muted></video>
         <img id="preview" class="hidden" alt="">
         <div id="qrBadge" class="badge no">Mencari QR code…</div>
+        <div id="faceInfo" class="small" style="position:absolute;top:8px;left:8px;right:8px;color:#fff;text-shadow:0 1px 2px #000"></div>
       </div>
       <canvas id="canvas" class="hidden"></canvas>
       <input type="file" id="fileCam" accept="image/*" capture="user" class="hidden" onchange="dariFile(this)">
@@ -94,6 +111,7 @@
 <script>
 let token = null, user = null, stream = null, scanning = false;
 let qrText = null, fotoData = null, pos = null, aksiTertunda = null;
+let ciriWajah = null, modelSiap = null, daftarCiri = [], daftarFoto = null;
 
 setInterval(() => {
   document.getElementById('jam').textContent =
@@ -137,10 +155,102 @@ async function onGoogleLogin(resp) {
     user = await api('login');
     document.getElementById('vLogin').classList.add('hidden');
     document.getElementById('vAbsen').classList.remove('hidden');
-    tampilProfil(); mulaiKamera(); mulaiGPS(); muatRiwayat();
+    modelSiap = muatModel();
+    tampilProfil(); aturTampilan(); mulaiGPS(); muatRiwayat();
   } catch (e) {
     msg('loginMsg', e.message);
     google.accounts.id.disableAutoSelect();
+  }
+}
+
+/* ---------- PENGENAL WAJAH ---------- */
+async function muatModel() {
+  await Promise.all([
+    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+  ]);
+  return true;
+}
+
+/** Deteksi wajah terbesar di canvas → {descriptor, box} atau null */
+async function deteksiWajah(canvas) {
+  await modelSiap;
+  const hasil = await faceapi
+    .detectAllFaces(canvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 }))
+    .withFaceLandmarks().withFaceDescriptors();
+  if (!hasil.length) return null;
+  hasil.sort((a, b) => b.detection.box.area - a.detection.box.area);
+  const f = hasil[0];
+  // wajah terlalu kecil di foto = kurang akurat
+  if (f.detection.box.width < canvas.width * 0.12) return { kecil: true };
+  return f;
+}
+
+// Pindahkan elemen kamera ke kartu yang aktif (daftar / absen)
+function pindahKamera(ke) {
+  const box = document.querySelector(ke === 'daftar' ? '#camDaftar' : '#kartuAbsen .cam');
+  const v = document.getElementById('video');
+  if (box.id === 'camDaftar') { box.className = 'cam'; box.appendChild(v); }
+  else box.insertBefore(v, box.firstChild);
+}
+
+function aturTampilan() {
+  const st = user.wajah;
+  const kDaftar = document.getElementById('kartuDaftar');
+  const kAbsen = document.getElementById('kartuAbsen');
+  const kStatus = document.getElementById('kartuStatusWajah');
+  kDaftar.classList.add('hidden'); kAbsen.classList.add('hidden'); kStatus.classList.add('hidden');
+
+  if (st === 'belum' || st === 'ditolak') {
+    if (st === 'ditolak') msg('daftarMsg', 'Pendaftaran wajah sebelumnya ditolak HRD. Silakan daftar ulang.');
+    kDaftar.classList.remove('hidden');
+    daftarCiri = []; daftarFoto = null;
+    pindahKamera('daftar'); mulaiKamera('daftar');
+    modelSiap.then(() => setTombolDaftar()).catch(() => msg('daftarMsg', 'Gagal memuat pengenal wajah. Periksa internet lalu muat ulang.'));
+  } else if (st === 'menunggu') {
+    kStatus.innerHTML = '⏳ <b>Wajah Anda sudah terdaftar</b> dan menunggu persetujuan HRD. Setelah disetujui, buka ulang halaman ini untuk absen.';
+    kStatus.classList.remove('hidden');
+  } else {
+    kAbsen.classList.remove('hidden');
+    pindahKamera('absen'); mulaiKamera('absen');
+  }
+}
+
+function setTombolDaftar() {
+  const b = document.getElementById('btnAmbilWajah');
+  const n = daftarCiri.length + 1;
+  const arah = ['lurus ke kamera', 'sedikit menoleh ke kiri', 'sedikit menoleh ke kanan'][daftarCiri.length];
+  b.disabled = false;
+  b.textContent = `📸 Ambil foto ${n}/3 (${arah})`;
+}
+
+async function ambilWajah() {
+  const b = document.getElementById('btnAmbilWajah');
+  const v = document.getElementById('video');
+  if (!v.videoWidth) return msg('daftarMsg', 'Kamera belum siap.');
+  b.disabled = true; b.textContent = 'Memeriksa wajah…';
+  const c = document.createElement('canvas');
+  c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext('2d').drawImage(v, 0, 0);
+  const f = await deteksiWajah(c);
+  if (!f) { msg('daftarMsg', 'Wajah tidak terdeteksi. Pastikan wajah terang dan menghadap kamera.'); return setTombolDaftar(); }
+  if (f.kecil) { msg('daftarMsg', 'Wajah terlalu jauh. Dekatkan wajah ke kamera.'); return setTombolDaftar(); }
+  daftarCiri.push(Array.from(f.descriptor));
+  if (!daftarFoto) daftarFoto = kompres(c);
+  msg('daftarMsg', `✓ Foto ${daftarCiri.length}/3 tersimpan`, true);
+  if (daftarCiri.length < 3) return setTombolDaftar();
+
+  b.textContent = 'Mendaftarkan wajah…';
+  try {
+    const r = await api('daftarWajah', { wajah: daftarCiri, foto: daftarFoto });
+    user.wajah = r.status;
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    msg('daftarMsg', '');
+    aturTampilan();
+  } catch (e) {
+    msg('daftarMsg', e.message);
+    daftarCiri = []; daftarFoto = null; setTombolDaftar();
   }
 }
 
@@ -154,19 +264,21 @@ function tampilProfil() {
 }
 
 function updateTombol() {
-  const siap = !!(qrText && fotoData);
+  const siap = !!(qrText && fotoData && ciriWajah);
   document.getElementById('btnMasuk').disabled  = !siap || !!user.sudahMasuk;
   document.getElementById('btnPulang').disabled = !siap || !user.sudahMasuk || !!user.sudahPulang;
 }
 
 /* ---------- KAMERA + SCAN QR ---------- */
-async function mulaiKamera() {
+async function mulaiKamera(mode) {
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false });
+    if (!stream) stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false });
     const v = document.getElementById('video');
+    v.classList.remove('hidden');
     v.srcObject = stream; await v.play();
-    scanning = true; requestAnimationFrame(scanLoop);
+    if (mode === 'absen') { scanning = true; requestAnimationFrame(scanLoop); }
   } catch (e) {
+    if (mode === 'daftar') { msg('daftarMsg', 'Kamera tidak bisa dibuka. Izinkan akses kamera untuk situs ini lalu muat ulang.'); return; }
     document.getElementById('video').classList.add('hidden');
     document.getElementById('btnFallback').classList.remove('hidden');
     setBadge(false, 'Tekan "Buka Kamera HP" lalu selfie dengan QR');
@@ -210,22 +322,32 @@ function scanLoop(t) {
   requestAnimationFrame(scanLoop);
 }
 
-function ambilFoto(q) {
+async function ambilFoto(q) {
   scanning = false;
   const v = document.getElementById('video'), c = document.getElementById('canvas');
   c.width = v.videoWidth; c.height = v.videoHeight;
   c.getContext('2d').drawImage(v, 0, 0);
-  setFoto(c, q);
+  const ok = await setFoto(c, q);
+  if (!ok) setTimeout(() => { scanning = true; requestAnimationFrame(scanLoop); }, 700);
 }
 
-function setFoto(c, q) {
+/** QR sudah terbaca → cek ada wajah → simpan foto + ciri wajah. Return true jika siap kirim. */
+async function setFoto(c, q) {
+  setBadge(false, 'QR terbaca, memeriksa wajah…');
+  const f = await deteksiWajah(c);
+  if (!f || f.kecil) {
+    setBadge(false, f ? 'QR terbaca, wajah terlalu jauh. Mendekat ke kamera.' : 'QR terbaca, tapi wajah tidak terlihat. Hadapkan wajah ke kamera.');
+    return false;
+  }
+  ciriWajah = Array.from(f.descriptor);
   qrText = q; fotoData = kompres(c);
   const p = document.getElementById('preview');
   p.src = fotoData; p.classList.remove('hidden');
   document.getElementById('video').classList.add('hidden');
   document.getElementById('btnUlang').classList.remove('hidden');
-  setBadge(true, '✓ QR terbaca: ' + q.split('|')[1]);
+  setBadge(true, '✓ QR ' + q.split('|')[1] + ' · wajah terdeteksi');
   updateTombol();
+  return true;
 }
 
 function kompres(src) {
@@ -249,15 +371,15 @@ function dariFile(input) {
     c.width = img.width * s; c.height = img.height * s;
     c.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0, c.width, c.height);
     const q = bacaQR(c);
-    if (q && q.indexOf('KKB-ABSEN|') === 0) setFoto(c, q);
-    else { setBadge(false, 'QR tidak terbaca di foto. Ulangi, dekatkan ke QR.'); qrText = fotoData = null; updateTombol(); }
+    if (q && q.indexOf('KKB-ABSEN|') === 0) setFoto(c, q).then(ok => { if (!ok) { qrText = fotoData = ciriWajah = null; updateTombol(); } });
+    else { setBadge(false, 'QR tidak terbaca di foto. Ulangi, dekatkan ke QR.'); qrText = fotoData = ciriWajah = null; updateTombol(); }
     URL.revokeObjectURL(img.src); input.value = '';
   };
   img.src = URL.createObjectURL(f);
 }
 
 function ulangFoto() {
-  qrText = fotoData = null; updateTombol();
+  qrText = fotoData = ciriWajah = null; updateTombol();
   document.getElementById('preview').classList.add('hidden');
   document.getElementById('btnUlang').classList.add('hidden');
   msg('absenMsg', '');
@@ -286,13 +408,13 @@ async function kirim(jenis) {
   ['btnMasuk', 'btnPulang'].forEach(id => document.getElementById(id).disabled = true);
   msg('absenMsg', 'Menyimpan…', true);
   try {
-    const r = await api('absen', { jenis, qr: qrText, foto: fotoData,
+    const r = await api('absen', { jenis, qr: qrText, foto: fotoData, wajah: ciriWajah,
                                    lat: pos ? pos.latitude : '', lng: pos ? pos.longitude : '' });
     let t = `✅ ${r.pesan}<br>Lokasi: ${r.lokasi}${r.jarak !== '' ? ' (' + r.jarak + ' m)' : ''}`;
     if (r.status !== 'Tepat Waktu') t += `<br>⚠️ ${r.status} ${r.selisih} menit`;
     msg('absenMsg', t, true);
     if (jenis === 'Masuk') user.sudahMasuk = r.jam; else user.sudahPulang = r.jam;
-    qrText = fotoData = null;
+    qrText = fotoData = ciriWajah = null;
     tampilProfil(); muatRiwayat();
   } catch (e) {
     if (e.relogin) {
