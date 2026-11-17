@@ -10,8 +10,8 @@
 <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.js"></script>
 <script>
   /* ====== KONFIGURASI — ISI 2 BARIS INI ====== */
-  const GOOGLE_CLIENT_ID = '59886614153-mhgngr8lgbiunbf6jor0igvisrr5cthf.apps.googleusercontent.com';
-  const API_URL = 'https://script.google.com/macros/s/AKfycbzz7QDdLoLHfoa6EjNQHwRUlH0j9NuFVTHYxfF8ydUCV69d-P0azJAIvSnknVpW-1oKmg/exec';
+  const GOOGLE_CLIENT_ID = 'ISI_CLIENT_ID.apps.googleusercontent.com';
+  const API_URL = 'https://script.google.com/macros/s/ISI_DEPLOYMENT_ID/exec';
   /* =========================================== */
   const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model/';
 </script>
@@ -79,8 +79,8 @@
     </div>
 
     <div class="card" id="kartuAbsen">
-      <div class="small" style="margin-bottom:8px">Berdiri di depan dinding QR. Pastikan <b>wajah dan QR code</b> sama-sama terlihat.</div>
-      <div class="cam">
+      <div class="small" id="petunjuk" style="margin-bottom:8px"></div>
+      <div class="cam" id="camAbsen">
         <video id="video" autoplay playsinline muted></video>
         <img id="preview" class="hidden" alt="">
         <div id="qrBadge" class="badge no">Mencari QR code…</div>
@@ -90,6 +90,7 @@
       <input type="file" id="fileCam" accept="image/*" capture="user" class="hidden" onchange="dariFile(this)">
 
       <button class="ghost hidden" id="btnFallback" onclick="document.getElementById('fileCam').click()">📷 Buka Kamera HP</button>
+      <button class="primary hidden" id="btnSelfie" onclick="ambilSelfie()">📸 Ambil Selfie</button>
       <button class="ghost hidden" id="btnUlang" onclick="ulangFoto()">↺ Foto Ulang</button>
 
       <div class="row">
@@ -112,6 +113,7 @@
 let token = null, user = null, stream = null, scanning = false;
 let qrText = null, fotoData = null, pos = null, aksiTertunda = null;
 let ciriWajah = null, modelSiap = null, daftarCiri = [], daftarFoto = null;
+let CFG = { foto: true, qr: true, wajah: true, gps: true }; // diisi dari server (sheet Pengaturan)
 
 setInterval(() => {
   document.getElementById('jam').textContent =
@@ -155,7 +157,8 @@ async function onGoogleLogin(resp) {
     user = await api('login');
     document.getElementById('vLogin').classList.add('hidden');
     document.getElementById('vAbsen').classList.remove('hidden');
-    modelSiap = muatModel();
+    CFG = user.mode || CFG;
+    modelSiap = CFG.wajah ? muatModel() : Promise.resolve(false);
     tampilProfil(); aturTampilan(); mulaiGPS(); muatRiwayat();
   } catch (e) {
     msg('loginMsg', e.message);
@@ -202,19 +205,45 @@ function aturTampilan() {
   const kStatus = document.getElementById('kartuStatusWajah');
   kDaftar.classList.add('hidden'); kAbsen.classList.add('hidden'); kStatus.classList.add('hidden');
 
-  if (st === 'belum' || st === 'ditolak') {
+  if (CFG.wajah && (st === 'belum' || st === 'ditolak')) {
     if (st === 'ditolak') msg('daftarMsg', 'Pendaftaran wajah sebelumnya ditolak HRD. Silakan daftar ulang.');
     kDaftar.classList.remove('hidden');
     daftarCiri = []; daftarFoto = null;
     pindahKamera('daftar'); mulaiKamera('daftar');
     modelSiap.then(() => setTombolDaftar()).catch(() => msg('daftarMsg', 'Gagal memuat pengenal wajah. Periksa internet lalu muat ulang.'));
-  } else if (st === 'menunggu') {
+  } else if (CFG.wajah && st === 'menunggu') {
     kStatus.innerHTML = '⏳ <b>Wajah Anda sudah terdaftar</b> dan menunggu persetujuan HRD. Setelah disetujui, buka ulang halaman ini untuk absen.';
     kStatus.classList.remove('hidden');
   } else {
     kAbsen.classList.remove('hidden');
-    pindahKamera('absen'); mulaiKamera('absen');
+    const ptj = [];
+    if (CFG.foto) ptj.push(CFG.qr ? 'Berdiri di depan dinding QR.' : 'Ambil selfie di lokasi kerja.');
+    if (CFG.qr && CFG.wajah) ptj.push('Pastikan <b>wajah dan QR code</b> sama-sama terlihat.');
+    else if (CFG.qr) ptj.push('Pastikan <b>QR code</b> terlihat di foto.');
+    else if (CFG.wajah) ptj.push('Pastikan <b>wajah</b> terlihat jelas.');
+    if (CFG.gps) ptj.push('Aktifkan GPS.');
+    document.getElementById('petunjuk').innerHTML = ptj.join(' ');
+    if (CFG.foto) {
+      pindahKamera('absen'); mulaiKamera('absen');
+      if (!CFG.qr) { document.getElementById('btnSelfie').classList.remove('hidden'); setBadge(false, 'Tekan "Ambil Selfie"'); }
+    } else {
+      document.getElementById('camAbsen').classList.add('hidden');
+    }
+    updateTombol();
   }
+}
+
+// Mode tanpa QR: selfie diambil manual
+async function ambilSelfie() {
+  const v = document.getElementById('video');
+  if (!v.videoWidth) return;
+  const b = document.getElementById('btnSelfie'); b.disabled = true;
+  const c = document.getElementById('canvas');
+  c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext('2d').drawImage(v, 0, 0);
+  const ok = await setFoto(c, null);
+  b.disabled = false;
+  if (ok) b.classList.add('hidden');
 }
 
 function setTombolDaftar() {
@@ -264,7 +293,7 @@ function tampilProfil() {
 }
 
 function updateTombol() {
-  const siap = !!(qrText && fotoData && ciriWajah);
+  const siap = (!CFG.foto || !!fotoData) && (!CFG.qr || !!qrText) && (!CFG.wajah || !!ciriWajah) && (!CFG.gps || !!pos);
   document.getElementById('btnMasuk').disabled  = !siap || !!user.sudahMasuk;
   document.getElementById('btnPulang').disabled = !siap || !user.sudahMasuk || !!user.sudahPulang;
 }
@@ -276,7 +305,7 @@ async function mulaiKamera(mode) {
     const v = document.getElementById('video');
     v.classList.remove('hidden');
     v.srcObject = stream; await v.play();
-    if (mode === 'absen') { scanning = true; requestAnimationFrame(scanLoop); }
+    if (mode === 'absen' && CFG.qr) { scanning = true; requestAnimationFrame(scanLoop); }
   } catch (e) {
     if (mode === 'daftar') { msg('daftarMsg', 'Kamera tidak bisa dibuka. Izinkan akses kamera untuk situs ini lalu muat ulang.'); return; }
     document.getElementById('video').classList.add('hidden');
@@ -333,19 +362,23 @@ async function ambilFoto(q) {
 
 /** QR sudah terbaca → cek ada wajah → simpan foto + ciri wajah. Return true jika siap kirim. */
 async function setFoto(c, q) {
-  setBadge(false, 'QR terbaca, memeriksa wajah…');
-  const f = await deteksiWajah(c);
-  if (!f || f.kecil) {
-    setBadge(false, f ? 'QR terbaca, wajah terlalu jauh. Mendekat ke kamera.' : 'QR terbaca, tapi wajah tidak terlihat. Hadapkan wajah ke kamera.');
-    return false;
+  const awal = q ? 'QR terbaca, ' : '';
+  ciriWajah = null;
+  if (CFG.wajah) {
+    setBadge(false, awal + 'memeriksa wajah…');
+    const f = await deteksiWajah(c);
+    if (!f || f.kecil) {
+      setBadge(false, awal + (f ? 'wajah terlalu jauh. Mendekat ke kamera.' : 'wajah tidak terlihat. Hadapkan wajah ke kamera.'));
+      return false;
+    }
+    ciriWajah = Array.from(f.descriptor);
   }
-  ciriWajah = Array.from(f.descriptor);
   qrText = q; fotoData = kompres(c);
   const p = document.getElementById('preview');
   p.src = fotoData; p.classList.remove('hidden');
   document.getElementById('video').classList.add('hidden');
   document.getElementById('btnUlang').classList.remove('hidden');
-  setBadge(true, '✓ QR ' + q.split('|')[1] + ' · wajah terdeteksi');
+  setBadge(true, '✓ ' + [q ? 'QR ' + q.split('|')[1] : 'Selfie diambil', CFG.wajah ? 'wajah terdeteksi' : ''].filter(String).join(' · '));
   updateTombol();
   return true;
 }
@@ -370,6 +403,7 @@ function dariFile(input) {
     const s = Math.min(1, 1600 / Math.max(img.width, img.height));
     c.width = img.width * s; c.height = img.height * s;
     c.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0, c.width, c.height);
+    if (!CFG.qr) { setFoto(c, null); URL.revokeObjectURL(img.src); input.value = ''; return; }
     const q = bacaQR(c);
     if (q && q.indexOf('KKB-ABSEN|') === 0) setFoto(c, q).then(ok => { if (!ok) { qrText = fotoData = ciriWajah = null; updateTombol(); } });
     else { setBadge(false, 'QR tidak terbaca di foto. Ulangi, dekatkan ke QR.'); qrText = fotoData = ciriWajah = null; updateTombol(); }
@@ -385,7 +419,8 @@ function ulangFoto() {
   msg('absenMsg', '');
   if (stream) {
     document.getElementById('video').classList.remove('hidden');
-    scanning = true; requestAnimationFrame(scanLoop);
+    if (CFG.qr) { scanning = true; requestAnimationFrame(scanLoop); }
+    else { document.getElementById('btnSelfie').classList.remove('hidden'); setBadge(false, 'Tekan "Ambil Selfie"'); }
   } else {
     document.getElementById('fileCam').click();
   }
@@ -395,7 +430,7 @@ function ulangFoto() {
 function mulaiGPS() {
   if (!navigator.geolocation) { document.getElementById('gpsInfo').textContent = '📍 GPS tidak didukung'; return; }
   navigator.geolocation.watchPosition(p => {
-    pos = p.coords;
+    pos = p.coords; if (user) updateTombol();
     document.getElementById('gpsInfo').textContent = `📍 GPS OK (akurasi ±${Math.round(pos.accuracy)} m)`;
   }, () => {
     document.getElementById('gpsInfo').textContent = '📍 GPS gagal: aktifkan lokasi & izinkan akses';
@@ -404,7 +439,6 @@ function mulaiGPS() {
 
 /* ---------- KIRIM ABSEN ---------- */
 async function kirim(jenis) {
-  if (!qrText || !fotoData) return;
   ['btnMasuk', 'btnPulang'].forEach(id => document.getElementById(id).disabled = true);
   msg('absenMsg', 'Menyimpan…', true);
   try {
