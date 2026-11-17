@@ -10,8 +10,8 @@
 <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.js"></script>
 <script>
   /* ====== KONFIGURASI — ISI 2 BARIS INI ====== */
-  const GOOGLE_CLIENT_ID = '59886614153-mhgngr8lgbiunbf6jor0igvisrr5cthf.apps.googleusercontent.com';
-  const API_URL = 'https://script.google.com/macros/s/AKfycbzz7QDdLoLHfoa6EjNQHwRUlH0j9NuFVTHYxfF8ydUCV69d-P0azJAIvSnknVpW-1oKmg/exec';
+  const GOOGLE_CLIENT_ID = 'ISI_CLIENT_ID.apps.googleusercontent.com';
+  const API_URL = 'https://script.google.com/macros/s/ISI_DEPLOYMENT_ID/exec';
   /* =========================================== */
   const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model/';
 </script>
@@ -28,7 +28,7 @@
   .pulang{background:#c4561a;color:#fff}
   .ghost{background:#e4eaf0;color:#1d2733}
   .primary{background:#1f4e78;color:#fff}
-  button:disabled{opacity:.45;cursor:not-allowed}
+  button:disabled{background:#c9d0d8 !important;color:#7a8794 !important;cursor:not-allowed}
   .row{display:flex;gap:10px}.row button{flex:1}
   .cam{position:relative;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:3/4}
   .cam video,.cam img{width:100%;height:100%;object-fit:cover;display:block}
@@ -223,7 +223,9 @@ function aturTampilan() {
     else if (CFG.wajah) ptj.push('Pastikan <b>wajah</b> terlihat jelas.');
     if (CFG.gps) ptj.push('Aktifkan GPS.');
     document.getElementById('petunjuk').innerHTML = ptj.join(' ');
-    if (CFG.foto) {
+    if (user.sudahMasuk && user.sudahPulang) {
+      document.getElementById('camAbsen').classList.add('hidden');
+    } else if (CFG.foto) {
       pindahKamera('absen'); mulaiKamera('absen');
       if (!CFG.qr) { document.getElementById('btnSelfie').classList.remove('hidden'); setBadge(false, 'Tekan "Ambil Selfie"'); }
     } else {
@@ -292,10 +294,26 @@ function tampilProfil() {
   updateTombol();
 }
 
+/** Belum masuk: MASUK aktif, PULANG abu-abu. Sudah masuk: MASUK abu-abu, PULANG aktif. Sudah pulang: keduanya abu-abu. */
 function updateTombol() {
-  const siap = (!CFG.foto || !!fotoData) && (!CFG.qr || !!qrText) && (!CFG.wajah || !!ciriWajah) && (!CFG.gps || !!pos);
-  document.getElementById('btnMasuk').disabled  = !siap || !!user.sudahMasuk;
-  document.getElementById('btnPulang').disabled = !siap || !user.sudahMasuk || !!user.sudahPulang;
+  const bM = document.getElementById('btnMasuk'), bP = document.getElementById('btnPulang');
+  bM.disabled = !!user.sudahMasuk;
+  bP.disabled = !user.sudahMasuk || !!user.sudahPulang;
+  bM.textContent = user.sudahMasuk ? `✓ MASUK ${user.sudahMasuk}` : 'ABSEN MASUK';
+  bP.textContent = user.sudahPulang ? `✓ PULANG ${user.sudahPulang}` : 'ABSEN PULANG';
+  if (user.sudahMasuk && user.sudahPulang) {
+    document.getElementById('petunjuk').innerHTML = '✅ <b>Absen hari ini sudah lengkap.</b> Sampai jumpa besok.';
+  }
+}
+
+/** Yang masih kurang sebelum absen bisa dikirim */
+function kurangApa() {
+  const k = [];
+  if (CFG.foto && CFG.qr && !qrText) k.push('QR code belum terbaca');
+  else if (CFG.foto && !fotoData) k.push('selfie belum diambil');
+  if (CFG.wajah && fotoData && !ciriWajah) k.push('wajah belum terdeteksi');
+  if (CFG.gps && !pos) k.push('GPS belum terbaca');
+  return k;
 }
 
 /* ---------- KAMERA + SCAN QR ---------- */
@@ -416,7 +434,6 @@ function ulangFoto() {
   qrText = fotoData = ciriWajah = null; updateTombol();
   document.getElementById('preview').classList.add('hidden');
   document.getElementById('btnUlang').classList.add('hidden');
-  msg('absenMsg', '');
   if (stream) {
     document.getElementById('video').classList.remove('hidden');
     if (CFG.qr) { scanning = true; requestAnimationFrame(scanLoop); }
@@ -439,6 +456,8 @@ function mulaiGPS() {
 
 /* ---------- KIRIM ABSEN ---------- */
 async function kirim(jenis) {
+  const kurang = kurangApa();
+  if (kurang.length) return msg('absenMsg', 'Belum bisa absen: ' + kurang.join(', ') + '.');
   ['btnMasuk', 'btnPulang'].forEach(id => document.getElementById(id).disabled = true);
   msg('absenMsg', 'Menyimpan…', true);
   try {
@@ -448,8 +467,16 @@ async function kirim(jenis) {
     if (r.status !== 'Tepat Waktu') t += `<br>⚠️ ${r.status} ${r.selisih} menit`;
     msg('absenMsg', t, true);
     if (jenis === 'Masuk') user.sudahMasuk = r.jam; else user.sudahPulang = r.jam;
-    qrText = fotoData = ciriWajah = null;
     tampilProfil(); muatRiwayat();
+    if (user.sudahMasuk && user.sudahPulang) {
+      // selesai hari ini: matikan kamera
+      scanning = false; qrText = fotoData = ciriWajah = null;
+      if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+      document.getElementById('camAbsen').classList.add('hidden');
+      ['btnUlang', 'btnSelfie', 'btnFallback'].forEach(id => document.getElementById(id).classList.add('hidden'));
+    } else if (CFG.foto) {
+      setTimeout(ulangFoto, 1500); // siapkan kamera untuk absen berikutnya (pulang)
+    }
   } catch (e) {
     if (e.relogin) {
       // Token Google habis (±1 jam) → login ulang lalu kirim otomatis
