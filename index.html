@@ -69,7 +69,7 @@
   .st-Belum,.st-Tidak{background:#eef2f6;color:#5b6b7b}.st-Alpa{background:#fde8e8;color:#9b1c1c}
   .item{border-bottom:1px solid #edf0f3;padding:8px 0;display:flex;gap:8px;align-items:flex-start}
   .item .aksi{display:flex;flex-direction:column;gap:4px}
-  .izin label{display:flex;align-items:center;gap:8px;font-size:13px;padding:4px 0}
+  .izin label{display:flex;align-items:flex-start;gap:8px;font-size:13px;padding:5px 0}
   .izin input{width:18px;height:18px}
   #modalFoto:not(.hidden){display:flex}
 </style>
@@ -157,6 +157,13 @@
         <button class="ghost mini" style="margin-top:8px" onclick="muatMonitor()">↻ Muat ulang</button>
       </div>
 
+      <!-- TAB: PERSETUJUAN WAJAH -->
+      <div class="tab hidden" data-tab="wajah">
+        <div class="small" style="margin:8px 0">Buka fotonya dulu dan pastikan itu memang orang yang bersangkutan, lalu Setujui.
+          Tolak = karyawan diminta daftar ulang. Reset = hapus wajah terdaftar (mis. penampilan berubah).</div>
+        <div id="wajahList" class="small"></div>
+      </div>
+
       <!-- TAB: KARYAWAN -->
       <div class="tab hidden" data-tab="karyawan">
         <div class="row" style="align-items:center">
@@ -211,6 +218,68 @@
         <div id="admKarList" class="small"></div>
         <h4>🗂️ Riwayat pemindahan</h4>
         <div id="admRiwayat" class="small"></div>
+      </div>
+
+      <!-- TAB: PENGATURAN (khusus Admin Utama) -->
+      <div class="tab hidden" data-tab="setelan">
+        <div id="setMemuat" class="small" style="margin-top:8px">Memuat…</div>
+        <div id="setIsi" class="hidden">
+          <h4>🛡️ Pengaman absen</h4>
+          <div class="small">Berlaku untuk semua karyawan begitu mereka membuka ulang aplikasi.</div>
+          <div class="izin" id="setSaklar"></div>
+          <label class="f">Batas kecocokan wajah: <b id="setAmbangTeks"></b></label>
+          <input type="range" id="setAmbang" min="0.40" max="0.60" step="0.01" style="width:100%" oninput="teksAmbang()">
+          <div class="small" style="display:flex;justify-content:space-between"><span>0,40 lebih ketat</span><span>0,50 disarankan</span><span>0,60 lebih longgar</span></div>
+          <div class="small">Karyawan asli sering ditolak? Geser ke kanan sedikit. Lihat kolom <i>Skor Wajah</i> di sheet Absensi sebagai acuan.</div>
+
+          <h4>💬 Notifikasi WhatsApp (Fonnte)</h4>
+          <label class="f">Token Fonnte</label>
+          <input id="setToken" type="password" autocomplete="off" style="width:100%;padding:10px;border:1px solid #c9d3de;border-radius:10px;font-size:15px">
+          <label class="izin"><label><input type="checkbox" id="setHapusToken">Hapus token (matikan notifikasi WA)</label></label>
+          <label class="f">No WA admin penerima notifikasi telat</label>
+          <input id="setWaAdmin" inputmode="tel" placeholder="628…" style="width:100%;padding:10px;border:1px solid #c9d3de;border-radius:10px;font-size:15px">
+          <button class="primary" id="btnSimpanSetelan" onclick="simpanSetelan()">Simpan Pengaturan</button>
+
+          <h4>📍 Lokasi kerja &amp; QR code</h4>
+          <div id="setLokasi"></div>
+          <button class="ghost mini" style="margin-top:6px" onclick="bukaFormLok()">+ Tambah lokasi</button>
+          <div id="formLok" class="hidden" style="background:#f6f8fa;border-radius:12px;padding:12px;margin-top:10px">
+            <b id="formLokJudul">Tambah lokasi</b>
+            <label class="f">Nama lokasi</label><input id="flNama" placeholder="mis. Dapur Odessa" style="width:100%;padding:10px;border:1px solid #c9d3de;border-radius:10px;font-size:15px">
+            <button class="ghost" onclick="posisiSaya()">📍 Pakai posisi saya sekarang</button>
+            <div id="flGps" class="small" style="margin-top:4px"></div>
+            <div class="row">
+              <div style="flex:1"><label class="f">Latitude</label><input id="flLat" inputmode="decimal" style="width:100%;padding:10px;border:1px solid #c9d3de;border-radius:10px;font-size:15px"></div>
+              <div style="flex:1"><label class="f">Longitude</label><input id="flLng" inputmode="decimal" style="width:100%;padding:10px;border:1px solid #c9d3de;border-radius:10px;font-size:15px"></div>
+            </div>
+            <label class="f">Radius (meter)</label><input id="flRadius" type="number" min="10" max="2000" value="50" style="width:100%;padding:10px;border:1px solid #c9d3de;border-radius:10px;font-size:15px">
+            <div class="small">Saran 50 m: GPS di dalam gedung bisa meleset 20–50 m. <a href="#" id="flMaps" target="_blank">Cek di Google Maps</a></div>
+            <div class="row">
+              <button class="ghost" onclick="document.getElementById('formLok').classList.add('hidden')">Batal</button>
+              <button class="primary" id="btnSimpanLok" onclick="simpanLok()">Simpan</button>
+            </div>
+          </div>
+
+          <h4>🕒 Shift</h4>
+          <div id="setShift"></div>
+          <button class="ghost mini" style="margin-top:6px" onclick="bukaFormShift()">+ Tambah shift</button>
+          <div id="formShift" class="hidden" style="background:#f6f8fa;border-radius:12px;padding:12px;margin-top:10px">
+            <b id="formShiftJudul">Tambah shift</b>
+            <label class="f">Nama shift</label><input id="fsNama" placeholder="mis. Pagi" style="width:100%;padding:10px;border:1px solid #c9d3de;border-radius:10px;font-size:15px">
+            <div class="row">
+              <div style="flex:1"><label class="f">Jam masuk</label><input id="fsMasuk" type="time" style="width:100%;padding:10px;border:1px solid #c9d3de;border-radius:10px;font-size:15px"></div>
+              <div style="flex:1"><label class="f">Jam pulang</label><input id="fsPulang" type="time" style="width:100%;padding:10px;border:1px solid #c9d3de;border-radius:10px;font-size:15px"></div>
+            </div>
+            <label class="f">Toleransi telat (menit)</label><input id="fsTol" type="number" min="0" max="240" value="10" style="width:100%;padding:10px;border:1px solid #c9d3de;border-radius:10px;font-size:15px">
+            <div class="row">
+              <button class="ghost" onclick="document.getElementById('formShift').classList.add('hidden')">Batal</button>
+              <button class="primary" id="btnSimpanShift" onclick="simpanShiftUI()">Simpan</button>
+            </div>
+          </div>
+
+          <h4>🔧 Info teknis (tidak bisa diubah di sini)</h4>
+          <div id="setInfo" class="small"></div>
+        </div>
       </div>
 
       <!-- TAB: ADMIN PEMBANTU (khusus Admin Utama) -->
@@ -352,6 +421,7 @@ function bukaTab(t) {
   document.querySelectorAll('#kartuAdmin .tab').forEach(d => d.classList.toggle('hidden', d.dataset.tab !== t));
   msg('admMsg', '');
   if (t === 'monitor') muatMonitor();
+  if (t === 'setelan') muatSetelan();
 }
 async function muatAdmin() {
   try {
@@ -359,9 +429,14 @@ async function muatAdmin() {
     document.getElementById('admPeran').textContent = '· ' + ADM.peran;
     const tabs = [];
     if (punya('monitor_absen')) tabs.push(['monitor', '📋 Absen Harian']);
+    if (punya('setujui_wajah')) {
+      const nTunggu = ADM.wajahList.filter(w => w.status === 'Menunggu').length;
+      tabs.push(['wajah', '🙂 Persetujuan Wajah' + (nTunggu ? ` (${nTunggu})` : '')]);
+    }
     if (punya('tambah_karyawan') || punya('ubah_karyawan') || punya('hapus_karyawan')) tabs.push(['karyawan', '👥 Karyawan']);
     if (punya('pindah_lokasi')) tabs.push(['pindah', '📍 Pindah Lokasi']);
     if (punya('kelola_admin')) tabs.push(['admin', '🔑 Admin Pembantu']);
+    if (punya('kelola_admin')) tabs.push(['setelan', '⚙️ Pengaturan']);
     document.getElementById('admTabs').innerHTML = tabs.map(([k, l]) => `<button data-t="${k}" onclick="bukaTab('${k}')">${l}</button>`).join('');
     const opsLok = ADM.lokasi.map(l => `<option>${esc(l)}</option>`).join('');
     document.getElementById('monLok').innerHTML = '<option value="">Semua lokasi</option>' + opsLok;
@@ -371,6 +446,7 @@ async function muatAdmin() {
     const mt = document.getElementById('monTgl'); if (!mt.value) mt.value = ADM.hariIni;
     if (ADM.karyawan) gambarKaryawan();
     if (punya('pindah_lokasi')) gambarPindah();
+    if (punya('setujui_wajah')) gambarWajah();
     if (punya('kelola_admin')) gambarPembantu();
     document.getElementById('btnTambahKar').classList.toggle('hidden', !punya('tambah_karyawan'));
     if (!TAB || !tabs.some(x => x[0] === TAB)) { if (tabs.length) bukaTab(tabs[0][0]); }
@@ -404,6 +480,193 @@ async function lihatFoto(id, cap) {
   img.removeAttribute('src'); document.getElementById('modalCap').textContent = 'Memuat foto…'; m.classList.remove('hidden');
   try { const r = await api('fotoAbsen', { id }); img.src = r.data; document.getElementById('modalCap').textContent = cap; }
   catch (e) { document.getElementById('modalCap').textContent = e.message; }
+}
+
+/* --- Pengaturan (Admin Utama) --- */
+let SET = null, lokLama = '', shiftLama = '';
+const SAKLAR = [
+  ['WAJIB_FOTO', 'Wajib selfie saat absen', 'Tidak = absen tanpa kamera (QR & wajah ikut tidak dipakai)'],
+  ['WAJIB_QR', 'Wajib QR code lokasi di foto', 'Mencegah fake GPS'],
+  ['WAJIB_WAJAH', 'Wajib wajah cocok', 'Mencegah titip absen'],
+  ['WAJIB_GPS', 'Wajib GPS dalam radius lokasi', 'Tidak = posisi hanya dicatat'],
+  ['WAJAH_PERSETUJUAN', 'Wajah baru harus disetujui admin', 'Tidak = wajah langsung aktif setelah daftar']
+];
+const urlQR = (l, ukuran) => 'https://quickchart.io/qr?size=' + ukuran + '&margin=2&ecLevel=M&text=' + encodeURIComponent(`KKB-ABSEN|${l.nama}|${l.kode}`);
+function teksAmbang() { document.getElementById('setAmbangTeks').textContent = Number(document.getElementById('setAmbang').value).toFixed(2).replace('.', ','); }
+async function muatSetelan() {
+  try {
+    SET = await api('pengaturan');
+    document.getElementById('setMemuat').classList.add('hidden');
+    document.getElementById('setIsi').classList.remove('hidden');
+    document.getElementById('setSaklar').innerHTML = SAKLAR.map(([k, l, ket]) =>
+      `<label><input type="checkbox" id="sk_${k}" ${SET.setelan[k] === 'Ya' ? 'checked' : ''} onchange="aturSaklar()"><span><b>${esc(l)}</b><br><span class="small">${esc(ket)}</span></span></label>`).join('');
+    aturSaklar();
+    document.getElementById('setAmbang').value = SET.setelan.WAJAH_AMBANG; teksAmbang();
+    document.getElementById('setToken').value = '';
+    document.getElementById('setToken').placeholder = SET.fonnte.ada ? `tersimpan (…${SET.fonnte.ujung}); isi untuk mengganti` : 'belum diisi';
+    document.getElementById('setHapusToken').checked = false;
+    document.getElementById('setWaAdmin').value = SET.setelan.WA_ADMIN || '';
+    document.getElementById('setLokasi').innerHTML = SET.lokasi.length ? SET.lokasi.map((l, i) => `
+      <div class="item"><div style="flex:1"><b>${esc(l.nama)}</b><br>
+        <span class="small">${l.lat}, ${l.lng} · radius ${l.radius} m · ${l.dipakai} karyawan<br>
+        Kode QR: ${l.kode ? esc(l.kode) : '<b style="color:#9b1c1c">belum ada</b>'}</span><br>
+        <a href="https://www.google.com/maps?q=${l.lat},${l.lng}" target="_blank" class="small">Lihat di peta</a></div>
+        <div class="aksi">
+          ${l.kode ? `<button class="primary mini" onclick="lihatQR(${i})">QR</button>` : ''}
+          <button class="ghost mini" onclick="bukaFormLok(${i})">Ubah</button>
+          <button class="ghost mini" onclick="gantiQR(${i})">${l.kode ? 'Ganti QR' : 'Buat QR'}</button>
+          <button class="ghost mini" style="color:#9b1c1c" onclick="hapusLok(${i})">Hapus</button>
+        </div></div>`).join('') : '<div class="small">Belum ada lokasi.</div>';
+    document.getElementById('setShift').innerHTML = SET.shift.map((h, i) => `
+      <div class="item"><div style="flex:1"><b>${esc(h.nama)}</b><br>
+        <span class="small">${esc(h.masuk)}–${esc(h.pulang)} · toleransi telat ${h.toleransi} mnt · ${h.dipakai} karyawan</span></div>
+        <div class="aksi"><button class="ghost mini" onclick="bukaFormShift(${i})">Ubah</button>
+        <button class="ghost mini" style="color:#9b1c1c" onclick="hapusShiftUI(${i})">Hapus</button></div></div>`).join('');
+    const inf = SET.info;
+    document.getElementById('setInfo').innerHTML =
+      `Google Client ID: <span style="word-break:break-all">${esc(inf.clientId) || '<b style="color:#9b1c1c">belum diisi</b>'}</span><br>` +
+      (inf.folderFoto ? `<a href="${esc(inf.folderFoto)}" target="_blank">Folder foto di Google Drive</a> · ` : '') +
+      `<a href="${esc(inf.sheet)}" target="_blank">Buka Google Sheet</a>`;
+  } catch (e) { document.getElementById('setMemuat').textContent = e.message; }
+}
+function aturSaklar() {
+  const foto = document.getElementById('sk_WAJIB_FOTO').checked;
+  ['WAJIB_QR', 'WAJIB_WAJAH'].forEach(k => { const el = document.getElementById('sk_' + k); el.disabled = !foto; el.parentElement.style.opacity = foto ? 1 : .45; });
+}
+async function simpanSetelan() {
+  const b = document.getElementById('btnSimpanSetelan'); b.disabled = true;
+  const data = {};
+  SAKLAR.forEach(([k]) => data[k] = document.getElementById('sk_' + k).checked ? 'Ya' : 'Tidak');
+  data.WAJAH_AMBANG = Number(document.getElementById('setAmbang').value);
+  data.WA_ADMIN = document.getElementById('setWaAdmin').value;
+  data.FONNTE_TOKEN = document.getElementById('setToken').value;
+  data.hapusToken = document.getElementById('setHapusToken').checked;
+  if (data.WAJIB_WAJAH === 'Tidak' && SET.setelan.WAJIB_WAJAH === 'Ya' && !confirm('Matikan pemeriksaan wajah? Titip absen jadi lebih mudah.')) { b.disabled = false; return; }
+  try { const r = await api('simpanSetelan', { data }); msg('admMsg', '✅ ' + esc(r.pesan), true); window.scrollTo({ top: document.getElementById('kartuAdmin').offsetTop, behavior: 'smooth' }); await muatSetelan(); }
+  catch (e) { msg('admMsg', e.message); }
+  b.disabled = false;
+}
+function petaLink() {
+  const la = document.getElementById('flLat').value, ln = document.getElementById('flLng').value;
+  document.getElementById('flMaps').href = `https://www.google.com/maps?q=${encodeURIComponent(la)},${encodeURIComponent(ln)}`;
+}
+function bukaFormLok(i) {
+  const l = i == null ? null : SET.lokasi[i];
+  lokLama = l ? l.nama : '';
+  document.getElementById('formLokJudul').textContent = l ? `Ubah lokasi ${l.nama}` : 'Tambah lokasi';
+  document.getElementById('flNama').value = l ? l.nama : '';
+  document.getElementById('flLat').value = l ? l.lat : '';
+  document.getElementById('flLng').value = l ? l.lng : '';
+  document.getElementById('flRadius').value = l ? l.radius : 50;
+  document.getElementById('flGps').textContent = l ? 'Nama baru tidak membuat QR lama kedaluwarsa.' : 'Berdiri di lokasi itu, lalu tekan tombol di atas.';
+  petaLink();
+  document.getElementById('formLok').classList.remove('hidden');
+  document.getElementById('formLok').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function posisiSaya() {
+  const info = document.getElementById('flGps');
+  if (!navigator.geolocation) return info.textContent = 'GPS tidak didukung HP ini.';
+  let terbaik = null;
+  const isi = c => {
+    if (terbaik && c.accuracy > terbaik.accuracy) return; // simpan yang paling akurat
+    terbaik = c;
+    document.getElementById('flLat').value = c.latitude.toFixed(6);
+    document.getElementById('flLng').value = c.longitude.toFixed(6);
+    info.textContent = `Posisi terbaca (akurasi ±${Math.round(c.accuracy)} m).` + (c.accuracy > 30 ? ' Kurang akurat: tunggu sebentar atau coba di dekat pintu/jendela.' : '');
+    petaLink();
+  };
+  info.textContent = 'Membaca GPS… tunggu beberapa detik.';
+  if (pos) isi(pos); // posisi yang sudah dipantau aplikasi (langsung tampil)
+  // pantau 15 detik untuk mendapat posisi yang lebih akurat
+  const w = navigator.geolocation.watchPosition(p => isi(p.coords), () => { if (!terbaik) info.textContent = 'GPS gagal: aktifkan Lokasi dan izinkan akses.'; },
+    { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 });
+  setTimeout(() => navigator.geolocation.clearWatch(w), 15000);
+}
+async function simpanLok() {
+  const b = document.getElementById('btnSimpanLok'); b.disabled = true;
+  const v = id => document.getElementById(id).value.replace(',', '.');
+  try {
+    const r = await api('simpanLokasi', { lama: lokLama, nama: document.getElementById('flNama').value, lat: v('flLat'), lng: v('flLng'), radius: v('flRadius') });
+    document.getElementById('formLok').classList.add('hidden'); msg('admMsg', '✅ ' + esc(r.pesan), true); await muatSetelan(); muatAdmin();
+  } catch (e) { msg('admMsg', e.message); document.getElementById('kartuAdmin').scrollIntoView({ behavior: 'smooth' }); }
+  b.disabled = false;
+}
+async function hapusLok(i) {
+  const l = SET.lokasi[i];
+  if (!confirm(`Hapus lokasi ${l.nama}? QR-nya tidak berlaku lagi.`)) return;
+  try { const r = await api('hapusLokasi', { nama: l.nama }); msg('admMsg', '✅ ' + esc(r.pesan), true); await muatSetelan(); muatAdmin(); }
+  catch (e) { msg('admMsg', e.message); }
+}
+async function gantiQR(i) {
+  const l = SET.lokasi[i];
+  if (l.kode && !confirm(`Ganti kode QR ${l.nama}? QR yang sudah tertempel langsung TIDAK berlaku; tempel QR baru.`)) return;
+  try { const r = await api('gantiQR', { nama: l.nama }); msg('admMsg', '✅ ' + esc(r.pesan), true); await muatSetelan(); }
+  catch (e) { msg('admMsg', e.message); }
+}
+function lihatQR(i) {
+  const l = SET.lokasi[i];
+  const m = document.getElementById('modalFoto'), img = document.getElementById('modalImg');
+  img.src = urlQR(l, 600);
+  document.getElementById('modalCap').innerHTML = `<b>${esc(l.nama)}</b><br><a href="${urlQR(l, 1000)}" target="_blank" style="color:#fff" onclick="event.stopPropagation()">⬇ Buka ukuran besar untuk dicetak / dibagikan</a>`;
+  m.classList.remove('hidden');
+}
+function bukaFormShift(i) {
+  const h = i == null ? null : SET.shift[i];
+  shiftLama = h ? h.nama : '';
+  document.getElementById('formShiftJudul').textContent = h ? `Ubah shift ${h.nama}` : 'Tambah shift';
+  document.getElementById('fsNama').value = h ? h.nama : '';
+  document.getElementById('fsMasuk').value = h ? h.masuk : '07:00';
+  document.getElementById('fsPulang').value = h ? h.pulang : '16:00';
+  document.getElementById('fsTol').value = h ? h.toleransi : 10;
+  document.getElementById('formShift').classList.remove('hidden');
+  document.getElementById('formShift').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+async function simpanShiftUI() {
+  const b = document.getElementById('btnSimpanShift'); b.disabled = true;
+  const v = id => document.getElementById(id).value;
+  try {
+    const r = await api('simpanShift', { lama: shiftLama, nama: v('fsNama'), masuk: v('fsMasuk'), pulang: v('fsPulang'), toleransi: v('fsTol') });
+    document.getElementById('formShift').classList.add('hidden'); msg('admMsg', '✅ ' + esc(r.pesan), true); await muatSetelan(); muatAdmin();
+  } catch (e) { msg('admMsg', e.message); document.getElementById('kartuAdmin').scrollIntoView({ behavior: 'smooth' }); }
+  b.disabled = false;
+}
+async function hapusShiftUI(i) {
+  const h = SET.shift[i];
+  if (!confirm(`Hapus shift ${h.nama}?`)) return;
+  try { const r = await api('hapusShift', { nama: h.nama }); msg('admMsg', '✅ ' + esc(r.pesan), true); await muatSetelan(); muatAdmin(); }
+  catch (e) { msg('admMsg', e.message); }
+}
+
+/* --- Persetujuan wajah --- */
+function gambarWajah() {
+  const L = ADM.wajahList;
+  document.getElementById('wajahList').innerHTML = L.length ? L.map(w => {
+    const st = { Menunggu: 'Terlambat', Disetujui: 'Hadir', Ditolak: 'Alpa' }[w.status];
+    const bolehSendiri = ADM.peran === 'Admin Utama' || w.email !== ADM.saya;
+    return `<div class="item"><div style="flex:1"><b>${esc(w.nama)}</b> <span class="st st-${st}">${esc(w.status)}</span><br>
+      <span class="small">${esc(w.email)} · daftar ${esc(w.tanggal)}</span>
+      ${w.adaFoto ? `<br><a href="#" onclick="lihatWajah('${esc(w.email)}','${esc(w.nama)}');return false">📷 Lihat foto pendaftaran</a>` : ''}</div>
+      <div class="aksi">
+        ${w.status !== 'Disetujui' && bolehSendiri ? `<button class="primary mini" style="background:#1b8a4b" onclick="putusWajah('${esc(w.email)}','Ya')">Setujui</button>` : ''}
+        ${w.status === 'Menunggu' && bolehSendiri ? `<button class="ghost mini" style="color:#9b1c1c" onclick="putusWajah('${esc(w.email)}','Tolak')">Tolak</button>` : ''}
+        ${w.status !== 'Menunggu' ? `<button class="ghost mini" onclick="resetWajah('${esc(w.email)}','${esc(w.nama)}')">Reset</button>` : ''}
+      </div></div>`;
+  }).join('') : 'Belum ada karyawan yang mendaftarkan wajah.';
+}
+async function lihatWajah(email, nama) {
+  const m = document.getElementById('modalFoto'), img = document.getElementById('modalImg');
+  img.removeAttribute('src'); document.getElementById('modalCap').textContent = 'Memuat foto…'; m.classList.remove('hidden');
+  try { const r = await api('fotoWajah', { target: email }); img.src = r.data; document.getElementById('modalCap').textContent = nama + ' · foto pendaftaran wajah'; }
+  catch (e) { document.getElementById('modalCap').textContent = e.message; }
+}
+async function putusWajah(email, keputusan) {
+  try { const r = await api('putusWajah', { target: email, keputusan }); msg('admMsg', '✅ ' + esc(r.pesan), true); await muatAdmin(); }
+  catch (e) { msg('admMsg', e.message); }
+}
+async function resetWajah(email, nama) {
+  if (!confirm(`Reset wajah ${nama}? Ia harus daftar wajah lagi sebelum bisa absen.`)) return;
+  try { const r = await api('resetWajah', { target: email }); msg('admMsg', '✅ ' + esc(r.pesan), true); await muatAdmin(); }
+  catch (e) { msg('admMsg', e.message); }
 }
 
 /* --- Karyawan --- */
