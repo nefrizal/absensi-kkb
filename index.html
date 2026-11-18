@@ -251,6 +251,11 @@
           <button class="primary" id="btnSimpanSetelan" onclick="simpanSetelan()">Simpan Pengaturan</button>
 
           <h4>📍 Lokasi kerja &amp; QR code</h4>
+          <label class="f">Dapur default (karyawan baru &amp; karyawan tanpa lokasi)</label>
+          <div class="row" style="align-items:center">
+            <select id="setLokDefault" style="flex:2"></select>
+            <button class="primary mini" style="flex:1;padding:10px" onclick="simpanDefault()">Simpan</button>
+          </div>
           <div id="setLokasi"></div>
           <button class="ghost mini" style="margin-top:6px" onclick="bukaFormLok()">+ Tambah lokasi</button>
           <div id="formLok" class="hidden" style="background:#f6f8fa;border-radius:12px;padding:12px;margin-top:10px">
@@ -499,9 +504,10 @@ const SAKLAR = [
   ['WAJIB_FOTO', 'Wajib selfie saat absen', 'Tidak = absen tanpa kamera (QR & wajah ikut tidak dipakai)'],
   ['WAJIB_QR', 'Wajib QR code lokasi di foto', 'Mencegah fake GPS'],
   ['WAJIB_WAJAH', 'Wajib wajah cocok', 'Mencegah titip absen'],
-  ['WAJIB_KEDIP', 'Wajib kedip mata 2 kali', 'Bukti wajah hidup (bukan foto); absen masuk terkirim otomatis setelah kedip'],
+  ['WAJIB_BUKA_MULUT', 'Wajib buka mulut (tampak gigi) 2 kali', 'Bukti wajah hidup (bukan foto); absen masuk terkirim otomatis setelahnya'],
   ['WAJIB_GPS', 'Wajib GPS dalam radius lokasi', 'Tidak = posisi hanya dicatat'],
-  ['WAJAH_PERSETUJUAN', 'Wajah baru harus disetujui admin', 'Tidak = wajah langsung aktif setelah daftar']
+  ['WAJAH_PERSETUJUAN', 'Wajah baru harus disetujui admin', 'Tidak = wajah langsung aktif setelah daftar'],
+  ['SIMPAN_FOTO', 'Simpan foto absen ke Google Drive', 'Tidak dicentang (disarankan) = foto hanya untuk verifikasi di HP, tidak disimpan; hemat memori Drive']
 ];
 const urlQR = (l, ukuran) => 'https://quickchart.io/qr?size=' + ukuran + '&margin=2&ecLevel=M&text=' + encodeURIComponent(`KKB-ABSEN|${l.nama}|${l.kode}`);
 function teksAmbang() { document.getElementById('setAmbangTeks').textContent = Number(document.getElementById('setAmbang').value).toFixed(2).replace('.', ','); }
@@ -518,8 +524,9 @@ async function muatSetelan() {
     document.getElementById('setToken').placeholder = SET.fonnte.ada ? `tersimpan (…${SET.fonnte.ujung}); isi untuk mengganti` : 'belum diisi';
     document.getElementById('setHapusToken').checked = false;
     document.getElementById('setWaAdmin').value = SET.setelan.WA_ADMIN || '';
+    document.getElementById('setLokDefault').innerHTML = SET.lokasi.map(l => `<option ${l.nama === SET.setelan.LOKASI_DEFAULT ? 'selected' : ''}>${esc(l.nama)}</option>`).join('');
     document.getElementById('setLokasi').innerHTML = SET.lokasi.length ? SET.lokasi.map((l, i) => `
-      <div class="item"><div style="flex:1"><b>${esc(l.nama)}</b><br>
+      <div class="item"><div style="flex:1"><b>${esc(l.nama)}</b>${l.nama === SET.setelan.LOKASI_DEFAULT ? ' <span class="tag">default</span>' : ''}<br>
         <span class="small">${l.lat}, ${l.lng} · radius ${l.radius} m · ${l.dipakai} karyawan<br>
         Kode QR: ${l.kode ? esc(l.kode) : '<b style="color:#9b1c1c">belum ada</b>'}</span><br>
         <a href="https://www.google.com/maps?q=${l.lat},${l.lng}" target="_blank" class="small">Lihat di peta</a></div>
@@ -541,11 +548,15 @@ async function muatSetelan() {
       `<a href="${esc(inf.sheet)}" target="_blank">Buka Google Sheet</a>`;
   } catch (e) { document.getElementById('setMemuat').textContent = e.message; }
 }
+async function simpanDefault() {
+  try { const r = await api('simpanSetelan', { data: { LOKASI_DEFAULT: document.getElementById('setLokDefault').value } }); msg('admMsg', '✅ ' + esc(r.pesan), true); await muatSetelan(); muatAdmin(); }
+  catch (e) { msg('admMsg', e.message); }
+}
 function aturSaklar() {
   const foto = document.getElementById('sk_WAJIB_FOTO').checked;
   const wajah = foto && document.getElementById('sk_WAJIB_WAJAH').checked;
   const atur = (k, aktif) => { const el = document.getElementById('sk_' + k); el.disabled = !aktif; el.parentElement.style.opacity = aktif ? 1 : .45; };
-  atur('WAJIB_QR', foto); atur('WAJIB_WAJAH', foto); atur('WAJIB_KEDIP', wajah);
+  atur('WAJIB_QR', foto); atur('WAJIB_WAJAH', foto); atur('WAJIB_BUKA_MULUT', wajah); atur('SIMPAN_FOTO', foto);
 }
 async function simpanSetelan() {
   const b = document.getElementById('btnSimpanSetelan'); b.disabled = true;
@@ -709,7 +720,7 @@ function bukaFormKar(email) {
   set('fkNama', k ? k.nama : ''); set('fkJabatan', k ? k.jabatan : '');
   const lok = document.getElementById('fkLokasi');
   if (k && ![...lok.options].some(o => o.value === k.lokasiTetap)) lok.insertAdjacentHTML('beforeend', `<option>${esc(k.lokasiTetap)}</option>`);
-  set('fkLokasi', k ? k.lokasiTetap : ADM.lokasi[0] || 'SEMUA');
+  set('fkLokasi', k ? k.lokasiTetap : ADM.lokasiDefault || ADM.lokasi[0] || 'SEMUA');
   set('fkShift', k ? k.shift : ADM.shift[0] || ''); set('fkWa', k ? k.wa : ''); set('fkAktif', k ? (k.aktif === 'Tidak' ? 'Tidak' : 'Ya') : 'Ya');
   document.getElementById('fkJamKhusus').checked = !!(k && k.jamKhusus);
   set('fkJamMasuk', k && k.jamKhusus ? k.jamMasuk : ''); set('fkJamPulang', k && k.jamKhusus ? k.jamPulang : '');
@@ -891,7 +902,7 @@ function aturTampilan() {
     if (CFG.qr && CFG.wajah) ptj.push('Pastikan <b>wajah dan QR code</b> sama-sama terlihat.');
     else if (CFG.qr) ptj.push('Pastikan <b>QR code</b> terlihat di foto.');
     else if (CFG.wajah) ptj.push('Pastikan <b>wajah</b> terlihat jelas.');
-    if (CFG.kedip) ptj.push('Setelah QR terbaca, <b>kedip pelan 2 kali</b>: absen terkirim otomatis.');
+    if (CFG.kedip) ptj.push('Setelah QR terbaca, <b>buka mulut sampai gigi terlihat, 2 kali</b>: absen terkirim otomatis.');
     if (CFG.gps) ptj.push('Aktifkan GPS.');
     document.getElementById('petunjuk').innerHTML = ptj.join(' ');
     if (user.sudahMasuk && user.sudahPulang) {
@@ -985,7 +996,7 @@ function kurangApa() {
   if (CFG.foto && CFG.qr && !qrText) k.push('QR code belum terbaca');
   else if (CFG.foto && !fotoData) k.push('selfie belum diambil');
   if (CFG.wajah && fotoData && !ciriWajah) k.push('wajah belum terdeteksi');
-  if (CFG.kedip && kedipN < 2) k.push('kedip mata 2 kali belum terdeteksi');
+  if (CFG.kedip && kedipN < 2) k.push('buka mulut 2 kali belum terdeteksi');
   if (CFG.gps && !pos) k.push('GPS belum terbaca');
   return k;
 }
@@ -1001,7 +1012,7 @@ async function mulaiKamera(mode) {
   } catch (e) {
     if (mode === 'daftar') { msg('daftarMsg', 'Kamera tidak bisa dibuka. Izinkan akses kamera untuk situs ini lalu muat ulang.'); return; }
     document.getElementById('video').classList.add('hidden');
-    if (CFG.kedip) { setBadge(false, 'Kamera tidak bisa dibuka. Izinkan akses kamera lalu muat ulang (deteksi kedip butuh kamera langsung).'); return; }
+    if (CFG.kedip) { setBadge(false, 'Kamera tidak bisa dibuka. Izinkan akses kamera lalu muat ulang (deteksi gerakan mulut butuh kamera langsung).'); return; }
     document.getElementById('btnFallback').classList.remove('hidden');
     setBadge(false, 'Tekan "Buka Kamera HP" lalu selfie dengan QR');
   }
@@ -1048,23 +1059,24 @@ function scanLoop(t) {
   requestAnimationFrame(scanLoop);
 }
 
-/* ---------- DETEKSI KEDIP (bukti wajah hidup) ---------- */
-// Eye Aspect Ratio: tinggi bukaan mata dibagi lebarnya (6 titik landmark per mata)
-function earMata(p) {
+/* ---------- BUKA MULUT 2x (bukti wajah hidup) ---------- */
+// Mouth Aspect Ratio: celah bibir dalam dibagi lebar mulut (titik 60–67 dari 68 landmark)
+function marMulut(p) {
   const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-  return (d(p[1], p[5]) + d(p[2], p[4])) / (2 * d(p[0], p[3]));
+  // getMouth() = titik 48–67; bibir dalam = indeks 12–19
+  return (d(p[13], p[19]) + d(p[14], p[18]) + d(p[15], p[17])) / (3 * d(p[12], p[16]));
 }
-/** Penghitung kedip: mata dianggap tertutup bila EAR turun di bawah 72% EAR mata terbuka,
- *  lalu terbuka lagi di atas 88%. Satu kedip = tertutup 40–800 ms (memejam lama tidak dihitung). */
-function buatDetektorKedip() {
-  const buka = []; let tutup = false, tTutup = 0, n = 0;
+/** Penghitung buka mulut: terbuka bila celah > 0,35 lebar mulut (dan ≥ 0,15 di atas posisi tertutup orang itu),
+ *  tertutup lagi bila < 0,22 (atau dekat posisi tertutupnya). Satu hitungan = terbuka 0,15–4 detik lalu menutup. */
+function buatDetektorMulut() {
+  const tutup = []; let buka = false, tBuka = 0, n = 0;
   return {
-    update(ear, t) {
-      if (!tutup) { buka.push(ear); if (buka.length > 30) buka.shift(); }
-      if (buka.length < 5) return n;
-      const urut = [...buka].sort((a, b) => a - b), dasar = urut[Math.floor(urut.length * 0.7)];
-      if (!tutup && ear < dasar * 0.72) { tutup = true; tTutup = t; }
-      else if (tutup && ear > dasar * 0.88) { const lama = t - tTutup; tutup = false; if (lama >= 40 && lama <= 800) n++; }
+    update(mar, t) {
+      if (!buka) { tutup.push(mar); if (tutup.length > 30) tutup.shift(); }
+      if (tutup.length < 3) return n;
+      const dasar = [...tutup].sort((a, b) => a - b)[Math.floor(tutup.length / 2)];
+      if (!buka && mar > Math.max(0.35, dasar + 0.15)) { buka = true; tBuka = t; }
+      else if (buka && mar < Math.max(0.22, dasar + 0.08)) { const lama = t - tBuka; buka = false; if (lama >= 150 && lama <= 4000) n++; }
       return n;
     },
     get n() { return n; }
@@ -1079,10 +1091,10 @@ function infoKedip(teks) {
 const tidur = ms => new Promise(r => setTimeout(r, ms));
 async function mulaiKedip(q) {
   kedipAktif = true; kedipN = 0;
-  const det = buatDetektorKedip(), v = document.getElementById('video'), mulai = Date.now();
+  const det = buatDetektorMulut(), v = document.getElementById('video'), mulai = Date.now();
   let tanpaWajah = 0, cekQR = 0;
   setBadge(true, '✓ QR ' + q.split('|')[1]);
-  infoKedip('😉 Kedip pelan 2 kali  ·  0/2');
+  infoKedip('😁 Buka mulut (tampak gigi) 2 kali  ·  0/2');
   try { await modelSiap; } catch (e) {
     kedipAktif = false; infoKedip('');
     setBadge(false, 'Pengenal wajah gagal dimuat. Periksa internet, lalu muat ulang aplikasi.');
@@ -1093,7 +1105,7 @@ async function mulaiKedip(q) {
     const now = Date.now();
     if (now - mulai > 25000) { // terlalu lama: ulangi dari pindai QR
       kedipAktif = false; infoKedip('');
-      setBadge(false, 'Kedip tidak terdeteksi. Hadapkan wajah ke kamera, lalu kedip 2 kali.');
+      setBadge(false, 'Gerakan mulut tidak terdeteksi. Hadapkan wajah ke kamera, lalu buka mulut lebar 2 kali.');
       setTimeout(() => { if (!fotoData) { scanning = true; requestAnimationFrame(scanLoop); } }, 1500);
       return;
     }
@@ -1110,9 +1122,8 @@ async function mulaiKedip(q) {
     if (!kedipAktif) return;
     if (r) {
       tanpaWajah = 0;
-      const ear = (earMata(r.landmarks.getLeftEye()) + earMata(r.landmarks.getRightEye())) / 2;
-      const n = det.update(ear, Date.now());
-      if (n !== kedipN) { kedipN = Math.min(n, 2); infoKedip(`😉 Kedip pelan 2 kali  ·  ${kedipN}/2`); }
+      const n = det.update(marMulut(r.landmarks.getMouth()), Date.now());
+      if (n !== kedipN) { kedipN = Math.min(n, 2); infoKedip(`😁 Buka mulut (tampak gigi) 2 kali  ·  ${kedipN}/2`); }
       if (kedipN >= 2) { kedipAktif = false; return kedipSelesai(); }
     } else if (++tanpaWajah === 8) {
       infoKedip('Wajah tidak terlihat. Hadapkan wajah ke kamera.');
@@ -1121,8 +1132,8 @@ async function mulaiKedip(q) {
   }
 }
 async function kedipSelesai() {
-  infoKedip('✓ Kedip terdeteksi');
-  await tidur(250); // pastikan mata sudah terbuka saat foto diambil
+  infoKedip('✓ Gerakan terdeteksi');
+  await tidur(300); // pastikan mulut sudah menutup saat foto diambil
   const v = document.getElementById('video'), c = document.getElementById('canvas');
   c.width = v.videoWidth; c.height = v.videoHeight;
   c.getContext('2d').drawImage(v, 0, 0);
@@ -1143,7 +1154,7 @@ async function kedipSelesai() {
   if (!ok) { kedipN = 0; setTimeout(() => { scanning = true; requestAnimationFrame(scanLoop); }, 900); return; }
   kirimOtomatis();
 }
-/** Setelah kedip 2x: MASUK langsung terkirim; PULANG otomatis hanya bila sudah jam pulang shift */
+/** Setelah buka mulut 2x: MASUK langsung terkirim; PULANG otomatis hanya bila sudah jam pulang shift */
 function kirimOtomatis() {
   if (!user.sudahMasuk) return kirim('Masuk');
   if (user.sudahPulang) return;
@@ -1179,7 +1190,7 @@ async function setFoto(c, q) {
   p.src = fotoData; p.classList.remove('hidden');
   document.getElementById('video').classList.add('hidden');
   document.getElementById('btnUlang').classList.remove('hidden');
-  setBadge(true, '✓ ' + [q ? 'QR ' + q.split('|')[1] : 'Selfie diambil', CFG.wajah ? 'wajah terdeteksi' : '', CFG.kedip && kedipN >= 2 ? 'kedip 2x' : ''].filter(String).join(' · '));
+  setBadge(true, '✓ ' + [q ? 'QR ' + q.split('|')[1] : 'Selfie diambil', CFG.wajah ? 'wajah terdeteksi' : '', CFG.kedip && kedipN >= 2 ? 'buka mulut 2x' : ''].filter(String).join(' · '));
   updateTombol();
   return true;
 }
@@ -1198,7 +1209,7 @@ function kompres(src) {
 
 function dariFile(input) {
   const f = input.files[0]; if (!f) return;
-  if (CFG.kedip) { setBadge(false, 'Deteksi kedip butuh kamera langsung. Izinkan akses kamera lalu muat ulang.'); input.value = ''; return; }
+  if (CFG.kedip) { setBadge(false, 'Deteksi gerakan mulut butuh kamera langsung. Izinkan akses kamera lalu muat ulang.'); input.value = ''; return; }
   const img = new Image();
   img.onload = () => {
     const c = document.getElementById('canvas');
@@ -1247,7 +1258,8 @@ async function kirim(jenis) {
   ['btnMasuk', 'btnPulang'].forEach(id => document.getElementById(id).disabled = true);
   msg('absenMsg', 'Menyimpan…', true);
   try {
-    const r = await api('absen', { jenis, qr: qrText, foto: fotoData, wajah: ciriWajah, kedip: kedipN,
+    // Foto hanya dikirim bila admin menyalakan "Simpan foto absen"; selain itu cukup hasil pemeriksaannya
+    const r = await api('absen', { jenis, qr: qrText, foto: CFG.simpanFoto ? fotoData : '', wajah: ciriWajah, gerak: kedipN, kedip: kedipN,
                                    lat: pos ? pos.latitude : '', lng: pos ? pos.longitude : '' });
     let t = `✅ ${r.pesan}<br>Lokasi: ${r.lokasi}${r.jarak !== '' ? ' (' + r.jarak + ' m)' : ''}`;
     if (r.status !== 'Tepat Waktu') t += `<br>⚠️ ${r.status} ${r.selisih} menit`;
@@ -1261,7 +1273,7 @@ async function kirim(jenis) {
       document.getElementById('camAbsen').classList.add('hidden');
       ['btnUlang', 'btnSelfie', 'btnFallback'].forEach(id => document.getElementById(id).classList.add('hidden'));
     } else if (CFG.kedip) {
-      // mode kedip: kamera tidak langsung memindai lagi (kedip alami bisa memicu absen pulang tanpa sengaja)
+      // mode gerakan: kamera tidak langsung memindai lagi (agar tidak terpicu absen pulang tanpa sengaja)
       kedipN = 0; fotoData = null; updateTombol();
       const b = document.getElementById('btnUlang'); b.textContent = '📸 Mulai absen pulang'; b.classList.remove('hidden');
     } else if (CFG.foto) {
