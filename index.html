@@ -52,6 +52,26 @@
   .hidden{display:none}
   .small{font-size:12px;color:#5b6b7b}
   #gBtn{display:flex;justify-content:center;margin-top:12px}
+  select,input[type=date],textarea{width:100%;padding:10px;font-size:15px;border:1px solid #c9d3de;border-radius:10px;background:#fff;font-family:inherit}
+  label.f{display:block;font-size:13px;font-weight:600;margin:10px 0 4px}
+  .seg{display:flex;gap:8px}.seg label{flex:1;border:1px solid #c9d3de;border-radius:10px;padding:10px;text-align:center;font-size:14px}
+  .seg input{margin-right:6px}
+  .adm h4{margin:16px 0 6px;font-size:14px;color:#1f4e78;border-top:1px solid #edf0f3;padding-top:12px}
+  button.mini{width:auto;padding:6px 10px;font-size:12px;margin:0;border-radius:8px}
+  .tag{display:inline-block;background:#fff3cd;color:#7a5b00;border-radius:6px;padding:0 6px;font-size:11px}
+  .tabs{display:flex;gap:6px;overflow-x:auto;margin:10px 0 4px}
+  .tabs button{width:auto;flex:none;margin:0;padding:8px 12px;font-size:13px;background:#e4eaf0;color:#1d2733;border-radius:20px}
+  .tabs button.on{background:#1f4e78;color:#fff}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+  .chips span{background:#eef2f6;border-radius:8px;padding:6px 8px;font-size:12px}.chips b{font-size:15px;margin-right:3px}
+  .st{display:inline-block;border-radius:6px;padding:1px 6px;font-size:11px;font-weight:700}
+  .st-Hadir{background:#e6f6ec;color:#14532d}.st-Terlambat{background:#fff3cd;color:#7a5b00}
+  .st-Belum,.st-Tidak{background:#eef2f6;color:#5b6b7b}.st-Alpa{background:#fde8e8;color:#9b1c1c}
+  .item{border-bottom:1px solid #edf0f3;padding:8px 0;display:flex;gap:8px;align-items:flex-start}
+  .item .aksi{display:flex;flex-direction:column;gap:4px}
+  .izin label{display:flex;align-items:center;gap:8px;font-size:13px;padding:4px 0}
+  .izin input{width:18px;height:18px}
+  #modalFoto:not(.hidden){display:flex}
 </style>
 </head>
 <body>
@@ -120,6 +140,101 @@
       <b>Riwayat 7 hari</b>
       <div id="riwayat" class="small" style="margin-top:8px">Memuat…</div>
     </div>
+    <!-- MENU ADMIN (Admin Utama / Admin Pembantu) -->
+    <div class="card adm hidden" id="kartuAdmin">
+      <b>⚙️ Menu Admin</b> <span class="small" id="admPeran"></span>
+      <div class="tabs" id="admTabs"></div>
+      <div id="admMsg"></div>
+
+      <!-- TAB: ABSEN HARIAN -->
+      <div class="tab hidden" data-tab="monitor">
+        <div class="row">
+          <div style="flex:1"><label class="f">Tanggal</label><input type="date" id="monTgl" onchange="muatMonitor()"></div>
+          <div style="flex:1"><label class="f">Lokasi</label><select id="monLok" onchange="muatMonitor()"></select></div>
+        </div>
+        <div class="chips" id="monRingkas"></div>
+        <div id="monList" class="small">Memuat…</div>
+        <button class="ghost mini" style="margin-top:8px" onclick="muatMonitor()">↻ Muat ulang</button>
+      </div>
+
+      <!-- TAB: KARYAWAN -->
+      <div class="tab hidden" data-tab="karyawan">
+        <div class="row" style="align-items:center">
+          <input id="karCari" placeholder="Cari nama / jabatan / lokasi…" oninput="gambarKaryawan()" style="flex:2;padding:10px;border:1px solid #c9d3de;border-radius:10px;font-size:15px">
+          <button class="primary mini" id="btnTambahKar" style="flex:1;padding:10px" onclick="bukaFormKar()">+ Tambah</button>
+        </div>
+        <div id="formKar" class="hidden" style="background:#f6f8fa;border-radius:12px;padding:12px;margin-top:10px">
+          <b id="formKarJudul">Tambah karyawan</b>
+          <label class="f">Email akun Google</label><input id="fkEmail" type="email" placeholder="nama@gmail.com" style="width:100%;padding:10px;border:1px solid #c9d3de;border-radius:10px;font-size:15px">
+          <label class="f">Nama</label><input id="fkNama" style="width:100%;padding:10px;border:1px solid #c9d3de;border-radius:10px;font-size:15px">
+          <label class="f">Jabatan</label><input id="fkJabatan" placeholder="mis. Koki, Driver, Manager" style="width:100%;padding:10px;border:1px solid #c9d3de;border-radius:10px;font-size:15px">
+          <div class="row">
+            <div style="flex:1"><label class="f">Lokasi</label><select id="fkLokasi"></select></div>
+            <div style="flex:1"><label class="f">Shift</label><select id="fkShift"></select></div>
+          </div>
+          <div class="row">
+            <div style="flex:1"><label class="f">No WA</label><input id="fkWa" inputmode="tel" placeholder="628…" style="width:100%;padding:10px;border:1px solid #c9d3de;border-radius:10px;font-size:15px"></div>
+            <div style="flex:1"><label class="f">Status</label><select id="fkAktif"><option>Ya</option><option>Tidak</option></select></div>
+          </div>
+          <div class="row">
+            <button class="ghost" onclick="tutupFormKar()">Batal</button>
+            <button class="primary" id="btnSimpanKar" onclick="simpanKar()">Simpan</button>
+          </div>
+        </div>
+        <div id="karList" class="small" style="margin-top:8px"></div>
+      </div>
+
+      <!-- TAB: PINDAH LOKASI -->
+      <div class="tab hidden" data-tab="pindah">
+        <label class="f">Karyawan</label>
+        <select id="admKar"></select>
+        <label class="f">Pindah ke lokasi</label>
+        <select id="admKe"></select>
+        <label class="f">Jenis</label>
+        <div class="seg">
+          <label><input type="radio" name="admJenis" value="Sementara" checked onchange="aturJenis()">Sementara</label>
+          <label><input type="radio" name="admJenis" value="Tetap" onchange="aturJenis()">Tetap</label>
+        </div>
+        <div id="admTanggal">
+          <div class="row">
+            <div style="flex:1"><label class="f">Mulai</label><input type="date" id="admMulai"></div>
+            <div style="flex:1"><label class="f">Selesai</label><input type="date" id="admSelesai"></div>
+          </div>
+          <div class="small" style="margin-top:4px">Setelah tanggal selesai, karyawan otomatis kembali ke lokasi tetapnya.</div>
+        </div>
+        <label class="f">Catatan (opsional)</label>
+        <textarea id="admCatatan" rows="2" placeholder="mis. bantu produksi"></textarea>
+        <button class="primary" id="btnPindah" onclick="simpanPindah()">Simpan Pemindahan</button>
+        <h4>⏳ Penugasan sementara (aktif &amp; akan datang)</h4>
+        <div id="admTugas" class="small"></div>
+        <h4>👥 Lokasi karyawan hari ini</h4>
+        <div id="admKarList" class="small"></div>
+        <h4>🗂️ Riwayat pemindahan</h4>
+        <div id="admRiwayat" class="small"></div>
+      </div>
+
+      <!-- TAB: ADMIN PEMBANTU (khusus Admin Utama) -->
+      <div class="tab hidden" data-tab="admin">
+        <div class="small" style="margin:8px 0">Admin Pembantu hanya bisa menjalankan kewenangan yang dicentang. Admin Pembantu tidak bisa
+          mengangkat admin, mengubah kewenangannya sendiri, mengisi jabatan Direktur, atau mengubah/menghapus data admin.</div>
+        <div id="admPembantu"></div>
+        <h4>➕ Angkat Admin Pembantu</h4>
+        <select id="admCalon"></select>
+        <div id="admCalonIzin" class="izin"></div>
+        <button class="primary" onclick="angkatPembantu()">Angkat</button>
+      </div>
+    </div>
+
+    <!-- Foto absen (monitor) -->
+    <div id="modalFoto" class="hidden" onclick="this.classList.add('hidden')"
+         style="position:fixed;inset:0;background:rgba(0,0,0,.8);align-items:center;justify-content:center;z-index:9;padding:16px">
+      <div style="max-width:440px;width:100%;text-align:center;color:#fff">
+        <img id="modalImg" style="width:100%;border-radius:12px;background:#222;min-height:120px" alt="">
+        <div id="modalCap" style="margin-top:8px;font-size:14px"></div>
+        <div class="small" style="color:#ccc;margin-top:4px">Ketuk di mana saja untuk menutup</div>
+      </div>
+    </div>
+
     <button class="ghost" onclick="logout()">Keluar / Ganti Akun</button>
   </div>
 </div>
@@ -206,6 +321,8 @@ async function onGoogleLogin(resp) {
     user = await api('login');
     document.getElementById('vLogin').classList.add('hidden');
     document.getElementById('vAbsen').classList.remove('hidden');
+    if (user.peran) { document.getElementById('kartuAdmin').classList.remove('hidden'); muatAdmin(); }
+    if (user.karyawan === false) { tampilProfilAdmin(); return; } // admin bukan karyawan: hanya menu Admin
     CFG = user.mode || CFG;
     modelSiap = CFG.wajah ? muatModel() : Promise.resolve(false);
     tampilProfil(); aturTampilan(); mulaiGPS(); muatRiwayat();
@@ -213,6 +330,211 @@ async function onGoogleLogin(resp) {
     msg('loginMsg', e.message);
     google.accounts.id.disableAutoSelect();
   }
+}
+
+/* ---------- MENU ADMIN ---------- */
+let ADM = null, TAB = null;
+const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const punya = k => ADM && ADM.izin.indexOf(k) > -1;
+function tglIndo(t) {
+  const b = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  const p = String(t || '').split('-'); return p.length === 3 ? `${Number(p[2])} ${b[Number(p[1])]}` : (t || '');
+}
+function tampilProfilAdmin() {
+  ['kartuAbsen', 'kartuDaftar', 'kartuStatusWajah'].forEach(id => document.getElementById(id).classList.add('hidden'));
+  document.getElementById('riwayat').parentElement.classList.add('hidden');
+  document.getElementById('profil').innerHTML = `<b style="font-size:16px">${esc(user.nama)}</b><br>
+    <span class="small">${esc(user.email)}</span><br><span class="tag">${esc(user.peran)}</span>`;
+}
+function bukaTab(t) {
+  TAB = t;
+  document.querySelectorAll('#admTabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  document.querySelectorAll('#kartuAdmin .tab').forEach(d => d.classList.toggle('hidden', d.dataset.tab !== t));
+  msg('admMsg', '');
+  if (t === 'monitor') muatMonitor();
+}
+async function muatAdmin() {
+  try {
+    ADM = await api('adminData');
+    document.getElementById('admPeran').textContent = '· ' + ADM.peran;
+    const tabs = [];
+    if (punya('monitor_absen')) tabs.push(['monitor', '📋 Absen Harian']);
+    if (punya('tambah_karyawan') || punya('ubah_karyawan') || punya('hapus_karyawan')) tabs.push(['karyawan', '👥 Karyawan']);
+    if (punya('pindah_lokasi')) tabs.push(['pindah', '📍 Pindah Lokasi']);
+    if (punya('kelola_admin')) tabs.push(['admin', '🔑 Admin Pembantu']);
+    document.getElementById('admTabs').innerHTML = tabs.map(([k, l]) => `<button data-t="${k}" onclick="bukaTab('${k}')">${l}</button>`).join('');
+    const opsLok = ADM.lokasi.map(l => `<option>${esc(l)}</option>`).join('');
+    document.getElementById('monLok').innerHTML = '<option value="">Semua lokasi</option>' + opsLok;
+    document.getElementById('fkLokasi').innerHTML = opsLok + '<option>SEMUA</option>';
+    document.getElementById('admKe').innerHTML = opsLok + '<option>SEMUA</option>';
+    document.getElementById('fkShift').innerHTML = ADM.shift.map(x => `<option>${esc(x)}</option>`).join('');
+    const mt = document.getElementById('monTgl'); if (!mt.value) mt.value = ADM.hariIni;
+    if (ADM.karyawan) gambarKaryawan();
+    if (punya('pindah_lokasi')) gambarPindah();
+    if (punya('kelola_admin')) gambarPembantu();
+    document.getElementById('btnTambahKar').classList.toggle('hidden', !punya('tambah_karyawan'));
+    if (!TAB || !tabs.some(x => x[0] === TAB)) { if (tabs.length) bukaTab(tabs[0][0]); }
+    else if (TAB === 'monitor') muatMonitor();
+  } catch (e) {
+    if (e.relogin) google.accounts.id.prompt(); else msg('admMsg', e.message);
+  }
+}
+
+/* --- Absen harian --- */
+async function muatMonitor() {
+  const list = document.getElementById('monList');
+  list.innerHTML = 'Memuat…';
+  try {
+    const d = await api('monitor', { tanggal: document.getElementById('monTgl').value, lokasi: document.getElementById('monLok').value });
+    const r = d.ringkas;
+    document.getElementById('monRingkas').innerHTML =
+      `<span><b>${r.hadir}</b>/${r.total} hadir</span><span><b>${r.terlambat}</b> terlambat</span>` +
+      `<span><b>${r.belum}</b> belum/tidak absen</span><span><b>${r.alpa}</b> alpa</span><span><b>${r.pulang}</b> sudah pulang</span>`;
+    list.innerHTML = d.baris.length ? d.baris.map(o => {
+      const st = o.status.split(' ')[0];
+      const masuk = o.masuk ? `Masuk <b>${o.masuk}</b>${o.telat ? ` (telat ${o.telat} mnt)` : ''}${o.fotoIn ? ` <a href="#" onclick="lihatFoto('${esc(o.fotoIn)}','${esc(o.nama)} · masuk ${o.masuk}');return false">📷</a>` : ''}` : '';
+      const pulang = o.pulang ? ` · Pulang <b>${o.pulang}</b>${o.cepat ? ` (cepat ${o.cepat} mnt)` : ''}${o.fotoOut ? ` <a href="#" onclick="lihatFoto('${esc(o.fotoOut)}','${esc(o.nama)} · pulang ${o.pulang}');return false">📷</a>` : ''}${o.lama ? ` · ${o.lama} jam` : ''}` : '';
+      return `<div class="item"><div style="flex:1"><b>${esc(o.nama)}</b> <span class="st st-${st}">${esc(o.status)}</span><br>
+        <span class="small">${esc(o.jabatan)} · ${esc(o.lokasi)}</span>${masuk || pulang ? `<br>${masuk}${pulang}` : ''}</div></div>`;
+    }).join('') : 'Tidak ada data.';
+  } catch (e) { list.innerHTML = ''; msg('admMsg', e.message); }
+}
+async function lihatFoto(id, cap) {
+  const m = document.getElementById('modalFoto'), img = document.getElementById('modalImg');
+  img.removeAttribute('src'); document.getElementById('modalCap').textContent = 'Memuat foto…'; m.classList.remove('hidden');
+  try { const r = await api('fotoAbsen', { id }); img.src = r.data; document.getElementById('modalCap').textContent = cap; }
+  catch (e) { document.getElementById('modalCap').textContent = e.message; }
+}
+
+/* --- Karyawan --- */
+let modeKar = 'tambah';
+function bolehUbah(k) { return punya('ubah_karyawan') && (ADM.peran === 'Admin Utama' || !k.admin); }
+function bolehHapus(k) { return punya('hapus_karyawan') && k.email !== ADM.saya && (ADM.peran === 'Admin Utama' || !k.admin); }
+function gambarKaryawan() {
+  const q = document.getElementById('karCari').value.toLowerCase();
+  const rows = ADM.karyawan.filter(k => !q || [k.nama, k.jabatan, k.lokasiTetap, k.email].join(' ').toLowerCase().includes(q));
+  document.getElementById('karList').innerHTML = `<div class="small">${rows.length} karyawan</div>` + rows.map(k => `
+    <div class="item"><div style="flex:1">
+      <b>${esc(k.nama)}</b> ${k.admin ? `<span class="tag">${esc(k.admin)}</span>` : ''} ${k.aktif === 'Ya' ? '' : '<span class="st st-Alpa">Nonaktif</span>'}<br>
+      <span class="small">${esc(k.jabatan)} · ${esc(k.lokasiTetap)} · Shift ${esc(k.shift)}<br>${esc(k.email)}${k.wa ? ' · ' + esc(k.wa) : ''}
+      · Wajah: ${esc(k.wajah)}</span></div>
+      <div class="aksi">
+        ${bolehUbah(k) ? `<button class="ghost mini" onclick="bukaFormKar('${esc(k.email)}')">Ubah</button>` : ''}
+        ${bolehHapus(k) ? `<button class="ghost mini" style="color:#9b1c1c" onclick="hapusKar('${esc(k.email)}')">Hapus</button>` : ''}
+      </div></div>`).join('');
+}
+function bukaFormKar(email) {
+  const k = email ? ADM.karyawan.find(x => x.email === email) : null;
+  modeKar = k ? 'ubah' : 'tambah';
+  document.getElementById('formKarJudul').textContent = k ? `Ubah data ${k.nama}` : 'Tambah karyawan';
+  const set = (id, v) => document.getElementById(id).value = v;
+  set('fkEmail', k ? k.email : ''); document.getElementById('fkEmail').readOnly = !!k;
+  set('fkNama', k ? k.nama : ''); set('fkJabatan', k ? k.jabatan : '');
+  const lok = document.getElementById('fkLokasi');
+  if (k && ![...lok.options].some(o => o.value === k.lokasiTetap)) lok.insertAdjacentHTML('beforeend', `<option>${esc(k.lokasiTetap)}</option>`);
+  set('fkLokasi', k ? k.lokasiTetap : ADM.lokasi[0] || 'SEMUA');
+  set('fkShift', k ? k.shift : ADM.shift[0] || ''); set('fkWa', k ? k.wa : ''); set('fkAktif', k ? (k.aktif === 'Tidak' ? 'Tidak' : 'Ya') : 'Ya');
+  document.getElementById('formKar').classList.remove('hidden');
+  document.getElementById('fkNama').focus();
+}
+function tutupFormKar() { document.getElementById('formKar').classList.add('hidden'); }
+async function simpanKar() {
+  const b = document.getElementById('btnSimpanKar'); b.disabled = true;
+  const v = id => document.getElementById(id).value;
+  try {
+    const r = await api('simpanKaryawan', { mode: modeKar, data: { email: v('fkEmail'), nama: v('fkNama'), jabatan: v('fkJabatan'),
+      lokasi: v('fkLokasi'), shift: v('fkShift'), wa: v('fkWa'), aktif: v('fkAktif') } });
+    tutupFormKar(); msg('admMsg', '✅ ' + esc(r.pesan), true); await muatAdmin();
+  } catch (e) { msg('admMsg', e.message); }
+  b.disabled = false;
+}
+async function hapusKar(email) {
+  const k = ADM.karyawan.find(x => x.email === email);
+  if (!confirm(`Hapus ${k.nama}?\n\nRiwayat absensinya tetap tersimpan, tetapi data wajah ikut dihapus dan ia tidak bisa absen lagi.`)) return;
+  try { const r = await api('hapusKaryawan', { target: email }); msg('admMsg', '✅ ' + esc(r.pesan), true); await muatAdmin(); }
+  catch (e) { msg('admMsg', e.message); }
+}
+
+/* --- Pindah lokasi --- */
+function aturJenis() {
+  const tetap = document.querySelector('input[name=admJenis]:checked').value === 'Tetap';
+  document.getElementById('admTanggal').classList.toggle('hidden', tetap);
+}
+function gambarPindah() {
+  const kar = document.getElementById('admKar'), pilihan = kar.value;
+  kar.innerHTML = ADM.karyawan.filter(k => k.aktif === 'Ya')
+    .map(k => `<option value="${esc(k.email)}">${esc(k.nama)} — ${esc(k.lokasiHariIni)}${k.sementara ? ' (sementara)' : ''}</option>`).join('');
+  if (pilihan) kar.value = pilihan;
+  ['admMulai', 'admSelesai'].forEach(id => { const el = document.getElementById(id); if (!el.value) el.value = ADM.hariIni; el.min = ADM.hariIni; });
+  document.getElementById('admTugas').innerHTML = ADM.penugasan.length
+    ? ADM.penugasan.map(t => `<div class="item"><div style="flex:1"><b>${esc(t.nama)}</b><br>${esc(t.dari)} → <b>${esc(t.ke)}</b><br>
+        ${tglIndo(t.mulai)} – ${tglIndo(t.selesai)}${t.catatan ? ' · ' + esc(t.catatan) : ''}<br><span class="small">oleh ${esc(t.oleh)}</span></div>
+        <div class="aksi"><button class="ghost mini" onclick="batalPindah('${esc(t.id)}','${esc(t.nama)}')">Batalkan</button></div></div>`).join('')
+    : 'Tidak ada penugasan sementara.';
+  document.getElementById('admKarList').innerHTML = '<table><tr><th>Nama</th><th>Lokasi hari ini</th></tr>' +
+    ADM.karyawan.filter(k => k.aktif === 'Ya').map(k => `<tr><td>${esc(k.nama)}<br><span class="small">${esc(k.jabatan)}</span></td>
+      <td>${esc(k.lokasiHariIni)}${k.sementara ? ` <span class="tag">sementara</span><br><span class="small">tetap: ${esc(k.lokasiTetap)}</span>` : ''}</td></tr>`).join('') + '</table>';
+  document.getElementById('admRiwayat').innerHTML = ADM.riwayat.length
+    ? ADM.riwayat.map(r => `<div class="item"><div>${esc(r.nama)}: ${esc(r.dari)} → ${esc(r.ke)}<br>
+        <span class="small">${esc(r.jenis)}${r.jenis === 'Sementara' ? ' ' + tglIndo(r.mulai) + '–' + tglIndo(r.selesai) : ' sejak ' + tglIndo(r.mulai)}
+        · ${esc(r.oleh)}${r.status !== 'Aktif' ? ' · ' + esc(r.status) : ''}</span></div></div>`).join('')
+    : 'Belum ada.';
+}
+async function simpanPindah() {
+  const b = document.getElementById('btnPindah');
+  const jenis = document.querySelector('input[name=admJenis]:checked').value;
+  const req = { target: document.getElementById('admKar').value, ke: document.getElementById('admKe').value, jenis,
+                mulai: document.getElementById('admMulai').value, selesai: document.getElementById('admSelesai').value,
+                catatan: document.getElementById('admCatatan').value };
+  b.disabled = true;
+  try {
+    const r = await api('pindah', req);
+    msg('admMsg', '✅ ' + esc(r.pesan), true); document.getElementById('admCatatan').value = '';
+    await muatAdmin();
+  } catch (e) { msg('admMsg', e.message); }
+  b.disabled = false;
+}
+async function batalPindah(id, nama) {
+  if (!confirm(`Batalkan penugasan sementara ${nama}?`)) return;
+  try { const r = await api('batalPindah', { id }); msg('admMsg', '✅ ' + esc(r.pesan), true); muatAdmin(); }
+  catch (e) { msg('admMsg', e.message); }
+}
+
+/* --- Admin Pembantu --- */
+function kotakIzin(nama, terpilih) {
+  return Object.entries(ADM.daftarIzin).map(([k, l]) =>
+    `<label><input type="checkbox" name="${nama}" value="${k}" ${terpilih.indexOf(k) > -1 ? 'checked' : ''}>${esc(l)}</label>`).join('');
+}
+const izinDipilih = nama => [...document.querySelectorAll(`input[name="${nama}"]:checked`)].map(x => x.value);
+function gambarPembantu() {
+  document.getElementById('admPembantu').innerHTML = ADM.pembantu.length ? ADM.pembantu.map((p, i) => `
+    <div style="background:#f6f8fa;border-radius:12px;padding:10px;margin-bottom:8px">
+      <b>${esc(p.nama)}</b><br><span class="small">${esc(p.email)} · diangkat ${tglIndo(p.tanggal)} oleh ${esc(p.oleh)}</span>
+      <div class="izin">${kotakIzin('iz' + i, p.izin)}</div>
+      <div class="row">
+        <button class="ghost mini" style="flex:1;color:#9b1c1c" onclick="cabutPembantu('${esc(p.email)}','${esc(p.nama)}')">Cabut</button>
+        <button class="primary mini" style="flex:2" onclick="ubahIzin('${esc(p.email)}','iz${i}')">Simpan kewenangan</button>
+      </div></div>`).join('') : '<div class="small">Belum ada Admin Pembantu.</div>';
+  const sudah = new Set(ADM.pembantu.map(p => p.email));
+  document.getElementById('admCalon').innerHTML = '<option value="">— pilih karyawan —</option>' +
+    ADM.karyawan.filter(k => k.aktif === 'Ya' && !k.admin && !sudah.has(k.email))
+      .map(k => `<option value="${esc(k.email)}">${esc(k.nama)} (${esc(k.jabatan)})</option>`).join('');
+  document.getElementById('admCalonIzin').innerHTML = kotakIzin('izBaru', ['monitor_absen']);
+}
+async function angkatPembantu() {
+  const target = document.getElementById('admCalon').value;
+  if (!target) return msg('admMsg', 'Pilih karyawan yang akan diangkat.');
+  try { const r = await api('angkatPembantu', { target, izin: izinDipilih('izBaru') }); msg('admMsg', '✅ ' + esc(r.pesan), true); muatAdmin(); }
+  catch (e) { msg('admMsg', e.message); }
+}
+async function ubahIzin(target, nama) {
+  try { const r = await api('ubahIzin', { target, izin: izinDipilih(nama) }); msg('admMsg', '✅ ' + esc(r.pesan), true); muatAdmin(); }
+  catch (e) { msg('admMsg', e.message); }
+}
+async function cabutPembantu(target, nama) {
+  if (!confirm(`Cabut ${nama} dari Admin Pembantu?`)) return;
+  try { const r = await api('cabutPembantu', { target }); msg('admMsg', '✅ ' + esc(r.pesan), true); muatAdmin(); }
+  catch (e) { msg('admMsg', e.message); }
 }
 
 /* ---------- PENGENAL WAJAH ---------- */
@@ -338,7 +660,9 @@ function tampilProfil() {
   document.getElementById('profil').innerHTML =
     `<b style="font-size:16px">${user.nama}</b><br>
      <span class="small">${user.email}</span><br>
-     ${user.jabatan} · Shift ${user.shift}<br>
+     ${user.jabatan} · Shift ${user.shift}${user.peran ? ` · <span class="tag">${user.peran}</span>` : ''}<br>
+     📍 Lokasi hari ini: <b>${user.lokasi}</b>${user.penugasan
+        ? `<br><span class="small">Penugasan sementara s/d ${tglIndo(user.penugasan.selesai)}, lalu kembali ke ${user.penugasan.dari}</span>` : ''}<br>
      Masuk: <b>${user.sudahMasuk || '–'}</b> &nbsp; Pulang: <b>${user.sudahPulang || '–'}</b>`;
   updateTombol();
 }
