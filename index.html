@@ -40,6 +40,10 @@
   .cam{position:relative;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:3/4}
   .cam video,.cam img{width:100%;height:100%;object-fit:cover;display:block}
   .cam video{transform:scaleX(-1)}
+  /* Petunjuk di dalam layar kamera: 2 baris, latar transparan, teks putih berbayang agar terbaca di atas gambar */
+  .petunjukCam{position:absolute;top:8px;left:10px;right:10px;color:#fff;font-size:13px;line-height:1.35;text-align:center;
+    text-shadow:0 0 3px #000,0 1px 2px #000,0 0 6px rgba(0,0,0,.8);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;z-index:2}
+  .petunjukCam b{font-weight:800}
   .badge{position:absolute;left:10px;right:10px;bottom:10px;padding:10px;border-radius:10px;font-size:14px;font-weight:600;text-align:center}
   .no{background:rgba(180,30,30,.85);color:#fff}
   .ok{background:rgba(27,138,75,.9);color:#fff}
@@ -114,12 +118,13 @@
     </div>
 
     <div class="card" id="kartuAbsen">
-      <div class="small" id="petunjuk" style="margin-bottom:8px"></div>
+      <div class="small hidden" id="petunjukLuar" style="margin-bottom:8px"></div>
       <div class="cam" id="camAbsen">
         <video id="video" autoplay playsinline muted></video>
         <img id="preview" class="hidden" alt="">
+        <div id="petunjuk" class="petunjukCam"></div>
         <div id="qrBadge" class="badge no">Mencari QR code…</div>
-        <div id="faceInfo" class="hidden" style="position:absolute;top:10px;left:10px;right:10px;padding:10px;border-radius:10px;background:rgba(31,78,120,.88);color:#fff;font-size:16px;font-weight:700;text-align:center"></div>
+        <div id="faceInfo" class="hidden" style="position:absolute;top:50px;left:10px;right:10px;padding:10px;border-radius:10px;background:rgba(31,78,120,.88);color:#fff;font-size:16px;font-weight:700;text-align:center"></div>
       </div>
       <canvas id="canvas" class="hidden"></canvas>
       <input type="file" id="fileCam" accept="image/*" capture="user" class="hidden" onchange="dariFile(this)">
@@ -486,8 +491,9 @@ async function muatMonitor() {
       const st = o.status.split(' ')[0];
       const masuk = o.masuk ? `Masuk <b>${o.masuk}</b>${o.telat ? ` (telat ${o.telat} mnt)` : ''}${o.fotoIn ? ` <a href="#" onclick="lihatFoto('${esc(o.fotoIn)}','${esc(o.nama)} · masuk ${o.masuk}');return false">📷</a>` : ''}` : '';
       const pulang = o.pulang ? ` · Pulang <b>${o.pulang}</b>${o.cepat ? ` (cepat ${o.cepat} mnt)` : ''}${o.fotoOut ? ` <a href="#" onclick="lihatFoto('${esc(o.fotoOut)}','${esc(o.nama)} · pulang ${o.pulang}');return false">📷</a>` : ''}${o.lama ? ` · ${o.lama} jam` : ''}` : '';
+      const lagi = o.masukLagi ? ` · Masuk lagi <b>${o.masukLagi}</b>` : '';
       return `<div class="item"><div style="flex:1"><b>${esc(o.nama)}</b> <span class="st st-${st}">${esc(o.status)}</span><br>
-        <span class="small">${esc(o.jabatan)} · ${esc(o.lokasi)}${o.jadwal ? ' · jadwal ' + esc(o.jadwal) : ''}</span>${masuk || pulang ? `<br>${masuk}${pulang}` : ''}</div></div>`;
+        <span class="small">${esc(o.jabatan)} · ${esc(o.lokasi)}${o.jadwal ? ' · jadwal ' + esc(o.jadwal) : ''}</span>${masuk || pulang ? `<br>${masuk}${lagi}${pulang}` : ''}</div></div>`;
     }).join('') : 'Tidak ada data.';
   } catch (e) { list.innerHTML = ''; msg('admMsg', e.message); }
 }
@@ -897,16 +903,10 @@ function aturTampilan() {
     kStatus.classList.remove('hidden');
   } else {
     kAbsen.classList.remove('hidden');
-    const ptj = [];
-    if (CFG.foto) ptj.push(CFG.qr ? 'Berdiri di depan dinding QR.' : 'Ambil selfie di lokasi kerja.');
-    if (CFG.qr && CFG.wajah) ptj.push('Pastikan <b>wajah dan QR code</b> sama-sama terlihat.');
-    else if (CFG.qr) ptj.push('Pastikan <b>QR code</b> terlihat di foto.');
-    else if (CFG.wajah) ptj.push('Pastikan <b>wajah</b> terlihat jelas.');
-    if (CFG.kedip) ptj.push('Setelah QR terbaca, <b>buka mulut sampai gigi terlihat, 2 kali</b>: absen terkirim otomatis.');
-    if (CFG.gps) ptj.push('Aktifkan GPS.');
-    document.getElementById('petunjuk').innerHTML = ptj.join(' ');
-    if (user.sudahMasuk && user.sudahPulang) {
+    if (user.sudahMasuk && user.sudahPulang && CFG.foto) {
+      // sudah pulang: kamera tidak langsung menyala; absen masuk lagi lewat tombol
       document.getElementById('camAbsen').classList.add('hidden');
+      tombolLanjut('📸 Mulai absen masuk');
     } else if (CFG.foto) {
       pindahKamera('absen'); mulaiKamera('absen');
       if (!CFG.qr) { document.getElementById('btnSelfie').classList.remove('hidden'); setBadge(false, 'Tekan "Ambil Selfie"'); }
@@ -967,6 +967,32 @@ async function ambilWajah() {
   }
 }
 
+/** Fase sekarang: true = sedang di tempat kerja (sudah MASUK, belum PULANG) */
+const fasePulang = () => !!user.sudahMasuk && !user.sudahPulang;
+/** Jumlah buka mulut yang diminta: MASUK 2 kali (lalu terkirim otomatis), PULANG cukup 1 kali (lalu tekan tombol) */
+const gerakButuh = () => fasePulang() ? 1 : 2;
+function teksGerak(n) {
+  return gerakButuh() === 1 ? `😁 Buka mulut (tampak gigi) 1 kali  ·  ${n}/1` : `😁 Buka mulut (tampak gigi) 2 kali  ·  ${n}/2`;
+}
+function tombolLanjut(teks) {
+  const b = document.getElementById('btnUlang'); b.textContent = teks; b.classList.remove('hidden');
+}
+function tulisPetunjuk() {
+  // Di dalam layar kamera: singkat, 2 baris. Bila kamera tidak tampil: di atas tombol.
+  const ptj = [];
+  if (CFG.foto) ptj.push(CFG.qr ? (CFG.wajah ? '<b>Wajah & QR</b> terlihat.' : '<b>QR</b> terlihat.') : 'Selfie di lokasi kerja.');
+  if (CFG.kedip) ptj.push(fasePulang()
+    ? 'QR terbaca → <b>buka mulut (tampak gigi) 1 kali</b>, lalu tekan ABSEN PULANG.'
+    : 'QR terbaca → <b>buka mulut (tampak gigi) 2 kali</b>, absen terkirim otomatis.');
+  else if (CFG.foto) ptj.push(CFG.qr ? 'Tunggu QR terbaca, lalu tekan tombol absen.' : 'Tekan "Ambil Selfie", lalu tombol absen.');
+  document.getElementById('petunjuk').innerHTML = ptj.join(' ');
+  const luar = document.getElementById('petunjukLuar');
+  const kameraTampil = CFG.foto && !document.getElementById('camAbsen').classList.contains('hidden');
+  const selesai = user.sudahMasuk && user.sudahPulang ? `✅ <b>Absen pulang tercatat (${user.sudahPulang}).</b> Tekan <b>📸 Mulai absen masuk</b> bila bekerja lagi.` : '';
+  luar.innerHTML = kameraTampil ? selesai : (selesai || ptj.join(' ') || (CFG.gps ? 'Aktifkan GPS, lalu tekan tombol absen.' : ''));
+  luar.classList.toggle('hidden', !luar.innerHTML);
+}
+
 function tampilProfil() {
   document.getElementById('profil').innerHTML =
     `<b style="font-size:16px">${user.nama}</b><br>
@@ -978,16 +1004,15 @@ function tampilProfil() {
   updateTombol();
 }
 
-/** Belum masuk: MASUK aktif, PULANG abu-abu. Sudah masuk: MASUK abu-abu, PULANG aktif. Sudah pulang: keduanya abu-abu. */
+/** Belum masuk / sudah pulang: MASUK aktif, PULANG abu-abu. Sudah masuk (belum pulang): MASUK abu-abu, PULANG aktif. */
 function updateTombol() {
   const bM = document.getElementById('btnMasuk'), bP = document.getElementById('btnPulang');
-  bM.disabled = !!user.sudahMasuk;
-  bP.disabled = !user.sudahMasuk || !!user.sudahPulang;
-  bM.textContent = user.sudahMasuk ? `✓ MASUK ${user.sudahMasuk}` : 'ABSEN MASUK';
-  bP.textContent = user.sudahPulang ? `✓ PULANG ${user.sudahPulang}` : 'ABSEN PULANG';
-  if (user.sudahMasuk && user.sudahPulang) {
-    document.getElementById('petunjuk').innerHTML = '✅ <b>Absen hari ini sudah lengkap.</b> Sampai jumpa besok.';
-  }
+  const kerja = fasePulang();
+  bM.disabled = kerja;
+  bP.disabled = !kerja;
+  bM.textContent = kerja ? `✓ MASUK ${user.sudahMasuk}` : 'ABSEN MASUK';
+  bP.textContent = !kerja && user.sudahPulang ? `✓ PULANG ${user.sudahPulang}` : 'ABSEN PULANG';
+  tulisPetunjuk();
 }
 
 /** Yang masih kurang sebelum absen bisa dikirim */
@@ -996,7 +1021,7 @@ function kurangApa() {
   if (CFG.foto && CFG.qr && !qrText) k.push('QR code belum terbaca');
   else if (CFG.foto && !fotoData) k.push('selfie belum diambil');
   if (CFG.wajah && fotoData && !ciriWajah) k.push('wajah belum terdeteksi');
-  if (CFG.kedip && kedipN < 2) k.push('buka mulut 2 kali belum terdeteksi');
+  if (CFG.kedip && kedipN < gerakButuh()) k.push(`buka mulut ${gerakButuh()} kali belum terdeteksi`);
   if (CFG.gps && !pos) k.push('GPS belum terbaca');
   return k;
 }
@@ -1094,7 +1119,7 @@ async function mulaiKedip(q) {
   const det = buatDetektorMulut(), v = document.getElementById('video'), mulai = Date.now();
   let tanpaWajah = 0, cekQR = 0;
   setBadge(true, '✓ QR ' + q.split('|')[1]);
-  infoKedip('😁 Buka mulut (tampak gigi) 2 kali  ·  0/2');
+  infoKedip(teksGerak(0));
   try { await modelSiap; } catch (e) {
     kedipAktif = false; infoKedip('');
     setBadge(false, 'Pengenal wajah gagal dimuat. Periksa internet, lalu muat ulang aplikasi.');
@@ -1105,7 +1130,7 @@ async function mulaiKedip(q) {
     const now = Date.now();
     if (now - mulai > 25000) { // terlalu lama: ulangi dari pindai QR
       kedipAktif = false; infoKedip('');
-      setBadge(false, 'Gerakan mulut tidak terdeteksi. Hadapkan wajah ke kamera, lalu buka mulut lebar 2 kali.');
+      setBadge(false, `Gerakan mulut tidak terdeteksi. Hadapkan wajah ke kamera, lalu buka mulut lebar ${gerakButuh()} kali.`);
       setTimeout(() => { if (!fotoData) { scanning = true; requestAnimationFrame(scanLoop); } }, 1500);
       return;
     }
@@ -1123,8 +1148,9 @@ async function mulaiKedip(q) {
     if (r) {
       tanpaWajah = 0;
       const n = det.update(marMulut(r.landmarks.getMouth()), Date.now());
-      if (n !== kedipN) { kedipN = Math.min(n, 2); infoKedip(`😁 Buka mulut (tampak gigi) 2 kali  ·  ${kedipN}/2`); }
-      if (kedipN >= 2) { kedipAktif = false; return kedipSelesai(); }
+      const butuh = gerakButuh();
+      if (n !== kedipN) { kedipN = Math.min(n, butuh); infoKedip(teksGerak(kedipN)); }
+      if (kedipN >= butuh) { kedipAktif = false; return kedipSelesai(); }
     } else if (++tanpaWajah === 8) {
       infoKedip('Wajah tidak terlihat. Hadapkan wajah ke kamera.');
     }
@@ -1132,7 +1158,7 @@ async function mulaiKedip(q) {
   }
 }
 async function kedipSelesai() {
-  infoKedip('✓ Gerakan terdeteksi');
+  infoKedip(fasePulang() ? '✓ Terverifikasi' : '✓ Gerakan terdeteksi');
   await tidur(300); // pastikan mulut sudah menutup saat foto diambil
   const v = document.getElementById('video'), c = document.getElementById('canvas');
   c.width = v.videoWidth; c.height = v.videoHeight;
@@ -1154,13 +1180,12 @@ async function kedipSelesai() {
   if (!ok) { kedipN = 0; setTimeout(() => { scanning = true; requestAnimationFrame(scanLoop); }, 900); return; }
   kirimOtomatis();
 }
-/** Setelah buka mulut 2x: MASUK langsung terkirim; PULANG otomatis hanya bila sudah jam pulang shift */
+/** MASUK (buka mulut 2x): langsung terkirim. PULANG (buka mulut 1x): verifikasi selesai, karyawan menekan ABSEN PULANG. */
 function kirimOtomatis() {
-  if (!user.sudahMasuk) return kirim('Masuk');
-  if (user.sudahPulang) return;
+  if (!fasePulang()) return kirim('Masuk');
   const sekarang = new Date().toTimeString().slice(0, 5);
-  if (!user.shiftPulang || sekarang >= user.shiftPulang) return kirim('Pulang');
-  msg('absenMsg', `Belum jam pulang (${user.shiftPulang}). Kalau memang pulang lebih cepat, tekan <b>ABSEN PULANG</b>.`);
+  const awal = user.shiftPulang && sekarang < user.shiftPulang ? ` (jam pulang ${user.shiftPulang}; bila ditekan sekarang tercatat pulang cepat)` : '';
+  msg('absenMsg', `✓ Verifikasi OK. Tekan tombol <b>ABSEN PULANG</b>${awal}.`, true);
 }
 
 async function ambilFoto(q) {
@@ -1190,7 +1215,7 @@ async function setFoto(c, q) {
   p.src = fotoData; p.classList.remove('hidden');
   document.getElementById('video').classList.add('hidden');
   document.getElementById('btnUlang').classList.remove('hidden');
-  setBadge(true, '✓ ' + [q ? 'QR ' + q.split('|')[1] : 'Selfie diambil', CFG.wajah ? 'wajah terdeteksi' : '', CFG.kedip && kedipN >= 2 ? 'buka mulut 2x' : ''].filter(String).join(' · '));
+  setBadge(true, '✓ ' + [q ? 'QR ' + q.split('|')[1] : 'Selfie diambil', CFG.wajah ? 'wajah terdeteksi' : '', CFG.kedip && kedipN >= gerakButuh() ? `buka mulut ${gerakButuh()}x` : ''].filter(String).join(' · '));
   updateTombol();
   return true;
 }
@@ -1226,7 +1251,16 @@ function dariFile(input) {
 }
 
 function ulangFoto() {
-  qrText = fotoData = ciriWajah = null; kedipN = 0; kedipAktif = false; infoKedip('');
+  qrText = fotoData = ciriWajah = null; kedipN = 0; kedipAktif = false; infoKedip(''); msg('absenMsg', '');
+  if (!stream && CFG.foto) { // kamera mati (setelah absen pulang): nyalakan lagi untuk absen berikutnya
+    document.getElementById('btnUlang').classList.add('hidden');
+    document.getElementById('preview').classList.add('hidden');
+    document.getElementById('camAbsen').classList.remove('hidden');
+    pindahKamera('absen'); mulaiKamera('absen');
+    if (!CFG.qr) { document.getElementById('btnSelfie').classList.remove('hidden'); setBadge(false, 'Tekan "Ambil Selfie"'); }
+    else setBadge(false, 'Mencari QR code…');
+    return updateTombol();
+  }
   document.getElementById('btnUlang').textContent = '↺ Foto Ulang';
   updateTombol();
   document.getElementById('preview').classList.add('hidden');
@@ -1262,20 +1296,23 @@ async function kirim(jenis) {
     const r = await api('absen', { jenis, qr: qrText, foto: CFG.simpanFoto ? fotoData : '', wajah: ciriWajah, gerak: kedipN, kedip: kedipN,
                                    lat: pos ? pos.latitude : '', lng: pos ? pos.longitude : '' });
     let t = `✅ ${r.pesan}<br>Lokasi: ${r.lokasi}${r.jarak !== '' ? ' (' + r.jarak + ' m)' : ''}`;
-    if (r.status !== 'Tepat Waktu') t += `<br>⚠️ ${r.status} ${r.selisih} menit`;
+    if (r.status === 'Masuk Ulang') t += '<br>Masuk lagi setelah absen pulang';
+    else if (r.status !== 'Tepat Waktu') t += `<br>⚠️ ${r.status} ${r.selisih} menit`;
     msg('absenMsg', t, true);
-    if (jenis === 'Masuk') user.sudahMasuk = r.jam; else user.sudahPulang = r.jam;
+    if (jenis === 'Masuk') { user.sudahMasuk = r.jam; user.sudahPulang = null; } else user.sudahPulang = r.jam;
     tampilProfil(); muatRiwayat();
-    if (user.sudahMasuk && user.sudahPulang) {
-      // selesai hari ini: matikan kamera
-      scanning = false; qrText = fotoData = ciriWajah = null;
+    if (jenis === 'Pulang') {
+      // pulang tercatat: PULANG abu-abu, MASUK aktif lagi. Kamera dimatikan; absen masuk berikutnya lewat tombol.
+      scanning = false; qrText = fotoData = ciriWajah = null; kedipN = 0;
       if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
       document.getElementById('camAbsen').classList.add('hidden');
-      ['btnUlang', 'btnSelfie', 'btnFallback'].forEach(id => document.getElementById(id).classList.add('hidden'));
+      ['btnSelfie', 'btnFallback'].forEach(id => document.getElementById(id).classList.add('hidden'));
+      updateTombol();
+      if (CFG.foto) tombolLanjut('📸 Mulai absen masuk');
     } else if (CFG.kedip) {
-      // mode gerakan: kamera tidak langsung memindai lagi (agar tidak terpicu absen pulang tanpa sengaja)
+      // mode gerakan: kamera tidak langsung memindai lagi (agar tidak terpicu tanpa sengaja)
       kedipN = 0; fotoData = null; updateTombol();
-      const b = document.getElementById('btnUlang'); b.textContent = '📸 Mulai absen pulang'; b.classList.remove('hidden');
+      tombolLanjut('📸 Mulai absen pulang');
     } else if (CFG.foto) {
       setTimeout(ulangFoto, 1500); // siapkan kamera untuk absen berikutnya (pulang)
     }
