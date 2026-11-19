@@ -1102,7 +1102,7 @@ function scanLoop(t) {
 }
 
 /* ---------- GERAKAN ACAK (bukti wajah hidup, bukan foto / video rekaman) ---------- */
-// Tiap absen aplikasi memilih satu gerakan secara acak, jadi video rekaman sulit dipakai.
+// Server memilih satu gerakan acak per karyawan per hari (beda tiap hari), jadi video rekaman sulit dipakai.
 const GERAKAN = [
   { kode: 'mulut',       ikon: '😮', teks: n => `Buka mulut (tampak gigi) ${n} kali`, ulang: true },
   { kode: 'senyum',      ikon: '😁', teks: n => `Senyum lebar (tampak gigi) ${n} kali`, ulang: true },
@@ -1114,13 +1114,10 @@ const GERAKAN = [
   { kode: 'dongak',      ikon: '⬆️', teks: () => 'Dongakkan kepala sedikit ke atas' }
 ];
 let tantangan = null, gerakSelesai = false;
-/** Pilih gerakan acak (tidak sama dengan yang terakhir). MASUK: senyum/buka mulut 2 kali; PULANG: 1 kali. */
+/** Gerakan hari ini ditentukan server (sama sepanjang hari, beda dengan kemarin). MASUK: senyum/buka mulut 2 kali; PULANG: 1 kali. */
 function pilihTantangan() {
-  let akhir = ''; try { akhir = localStorage.getItem('gerakTerakhir') || ''; } catch (e) {}
-  const calon = GERAKAN.filter(g => g.kode !== akhir);
-  const acak = new Uint32Array(1); crypto.getRandomValues(acak);
-  const g = calon[acak[0] % calon.length];
-  try { localStorage.setItem('gerakTerakhir', g.kode); } catch (e) {}
+  let g = GERAKAN.find(x => x.kode === user.gerakan);
+  if (!g) { const acak = new Uint32Array(1); crypto.getRandomValues(acak); g = GERAKAN[acak[0] % GERAKAN.length]; } // cadangan (server lama)
   const butuh = g.ulang ? (fasePulang() ? 1 : 2) : 1;
   return Object.assign({}, g, { butuh, label: `${g.ikon} ${g.teks(butuh)}` });
 }
