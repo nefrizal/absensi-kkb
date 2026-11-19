@@ -41,6 +41,13 @@
   .cam video,.cam img{width:100%;height:100%;object-fit:cover;display:block}
   .cam video{transform:scaleX(-1)}
   /* Judul 1 baris di dalam layar kamera: latar transparan, teks putih berbayang agar terbaca di atas gambar */
+  .cam.tercatat video,.cam.tercatat img{filter:blur(14px) brightness(.75);transform:scale(1.08)}
+  .cam.tercatat .badge,.cam.tercatat #faceInfo{display:none}
+  .tercatatInfo{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#fff;text-align:center;z-index:3;
+    text-shadow:0 1px 4px rgba(0,0,0,.6)}
+  .tercatatInfo .besar{font-size:40px;font-weight:800;letter-spacing:1px}
+  .tercatatInfo .jamT{font-size:30px;font-weight:700}
+  .tercatatInfo .ket{font-size:14px;background:rgba(0,0,0,.35);padding:4px 10px;border-radius:20px}
   .judulCam{position:absolute;top:8px;left:10px;right:10px;color:#fff;font-size:13px;font-weight:600;text-align:center;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 0 3px #000,0 1px 2px #000,0 0 6px rgba(0,0,0,.8);z-index:2}
   body.absen header{display:none}
@@ -53,7 +60,7 @@
   .suc{background:#e6f6ec;color:#14532d}
   table{width:100%;border-collapse:collapse;font-size:13px}
   td,th{padding:6px 4px;border-bottom:1px solid #edf0f3;text-align:left}
-  .hidden{display:none}
+  .hidden{display:none !important}
   .small{font-size:12px;color:#5b6b7b}
   #gBtn{display:flex;justify-content:center;margin-top:12px}
   select,input[type=date],textarea{width:100%;padding:10px;font-size:15px;border:1px solid #c9d3de;border-radius:10px;background:#fff;font-family:inherit}
@@ -123,6 +130,7 @@
         <video id="video" autoplay playsinline muted></video>
         <img id="preview" class="hidden" alt="">
         <div id="judulCam" class="judulCam">Absensi KKB</div>
+        <div id="tercatatInfo" class="tercatatInfo hidden"></div>
         <div id="qrBadge" class="badge no">Mencari QR code…</div>
         <div id="faceInfo" class="hidden" style="position:absolute;bottom:66px;left:10px;right:10px;padding:8px;border-radius:10px;background:rgba(31,78,120,.85);color:#fff;font-size:15px;font-weight:700;text-align:center"></div>
       </div>
@@ -366,6 +374,10 @@ document.addEventListener('DOMContentLoaded', () => { if (isIOS) tampilPasang();
 let token = null, user = null, stream = null, scanning = false;
 let qrText = null, fotoData = null, pos = null, aksiTertunda = null;
 let ciriWajah = null, modelSiap = null, daftarCiri = [], daftarFoto = null;
+// Model pengenal wajah mulai dimuat begitu halaman dibuka, bersamaan dengan login Google → absen lebih cepat siap
+let modelAwal;
+try { modelAwal = muatModel(); } catch (e) { modelAwal = Promise.reject(e); }
+modelAwal.catch(() => {}); // kegagalan ditangani saat login (dimuat ulang)
 let CFG = { foto: true, qr: true, wajah: true, kedip: true, gps: true }; // diisi dari server (sheet Pengaturan)
 let kedipN = 0, kedipAktif = false, qrTerakhir = null;
 
@@ -423,7 +435,7 @@ async function onGoogleLogin(resp) {
     if (user.peran) { document.getElementById('kartuAdmin').classList.remove('hidden'); muatAdmin(); }
     if (user.karyawan === false) { tampilProfilAdmin(); return; } // admin bukan karyawan: hanya menu Admin
     CFG = user.mode || CFG;
-    modelSiap = CFG.wajah ? muatModel() : Promise.resolve(false);
+    modelSiap = CFG.wajah ? modelAwal.catch(() => muatModel()) : Promise.resolve(false);
     // Tampilan absen: layar kamera paling atas; judul aplikasi disembunyikan, data karyawan pindah ke bawah kamera
     document.body.classList.add('absen');
     const kA = document.getElementById('kartuAbsen'); kA.parentNode.insertBefore(document.getElementById('profil'), kA.nextSibling);
@@ -1204,12 +1216,19 @@ async function ambilFoto(q) {
 }
 
 /** QR sudah terbaca → cek ada wajah → simpan foto + ciri wajah. Return true jika siap kirim. */
+function perkecil(c, maks) {
+  const s = Math.min(1, maks / Math.max(c.width, c.height));
+  if (s === 1) return c;
+  const k = document.createElement('canvas'); k.width = Math.round(c.width * s); k.height = Math.round(c.height * s);
+  k.getContext('2d').drawImage(c, 0, 0, k.width, k.height);
+  return k;
+}
 async function setFoto(c, q) {
   const awal = q ? 'QR terbaca, ' : '';
   ciriWajah = null;
   if (CFG.wajah) {
     setBadge(false, awal + 'memeriksa wajah…');
-    const f = await deteksiWajah(c);
+    const f = await deteksiWajah(perkecil(c, 720));
     if (!f || f.kecil) {
       setBadge(false, awal + (f ? 'wajah terlalu jauh. Mendekat ke kamera.' : 'wajah tidak terlihat. Hadapkan wajah ke kamera.'));
       return false;
@@ -1256,7 +1275,23 @@ function dariFile(input) {
   img.src = URL.createObjectURL(f);
 }
 
+/** Setelah tersimpan di database: kamera buram 60 detik, tulisan MASUK/PULANG + jam di tengah */
+let tercatatTimer = null;
+function tampilTercatat(jenis, jam, lalu) {
+  const cam = document.getElementById('camAbsen'), info = document.getElementById('tercatatInfo');
+  clearTimeout(tercatatTimer);
+  info.innerHTML = `<div class="besar">✓ ${jenis.toUpperCase()}</div><div class="jamT">${jam}</div><div class="ket">Tercatat di database</div>`;
+  info.classList.remove('hidden'); cam.classList.add('tercatat');
+  tercatatTimer = setTimeout(() => { hapusTercatat(); if (lalu) lalu(); }, 60000);
+}
+function hapusTercatat() {
+  clearTimeout(tercatatTimer); tercatatTimer = null;
+  document.getElementById('tercatatInfo').classList.add('hidden');
+  document.getElementById('camAbsen').classList.remove('tercatat');
+}
+
 function ulangFoto() {
+  hapusTercatat();
   qrText = fotoData = ciriWajah = null; kedipN = 0; kedipAktif = false; infoKedip(''); msg('absenMsg', '');
   if (!stream && CFG.foto) { // kamera mati (setelah absen pulang): nyalakan lagi untuk absen berikutnya
     document.getElementById('btnUlang').classList.add('hidden');
@@ -1307,20 +1342,24 @@ async function kirim(jenis) {
     msg('absenMsg', t, true);
     if (jenis === 'Masuk') { user.sudahMasuk = r.jam; user.sudahPulang = null; } else user.sudahPulang = r.jam;
     tampilProfil(); muatRiwayat();
+    const jamPenuh = (r.pesan.match(/\d{2}:\d{2}:\d{2}/) || [r.jam])[0];
     if (jenis === 'Pulang') {
-      // pulang tercatat: PULANG abu-abu, MASUK aktif lagi. Kamera dimatikan; absen masuk berikutnya lewat tombol.
+      // pulang tercatat: PULANG abu-abu, MASUK aktif lagi. Kamera buram 60 dtk, lalu dimatikan; masuk berikutnya lewat tombol.
       scanning = false; qrText = fotoData = ciriWajah = null; kedipN = 0;
       if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-      document.getElementById('camAbsen').classList.add('hidden');
       ['btnSelfie', 'btnFallback'].forEach(id => document.getElementById(id).classList.add('hidden'));
       updateTombol();
-      if (CFG.foto) tombolLanjut('📸 Mulai absen masuk');
+      if (CFG.foto) {
+        tombolLanjut('📸 Mulai absen masuk');
+        tampilTercatat('Pulang', jamPenuh, () => { document.getElementById('camAbsen').classList.add('hidden'); updateTombol(); });
+      }
     } else if (CFG.kedip) {
       // mode gerakan: kamera tidak langsung memindai lagi (agar tidak terpicu tanpa sengaja)
       kedipN = 0; fotoData = null; updateTombol();
       tombolLanjut('📸 Mulai absen pulang');
+      tampilTercatat('Masuk', jamPenuh);
     } else if (CFG.foto) {
-      setTimeout(ulangFoto, 1500); // siapkan kamera untuk absen berikutnya (pulang)
+      tampilTercatat('Masuk', jamPenuh, ulangFoto); // setelah 60 dtk kamera siap untuk absen pulang
     }
   } catch (e) {
     if (e.relogin) {
