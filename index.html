@@ -534,7 +534,7 @@ const SAKLAR = [
   ['WAJIB_FOTO', 'Wajib selfie saat absen', 'Tidak = absen tanpa kamera (QR & wajah ikut tidak dipakai)'],
   ['WAJIB_QR', 'Wajib QR code lokasi di foto', 'Mencegah fake GPS'],
   ['WAJIB_WAJAH', 'Wajib wajah cocok', 'Mencegah titip absen'],
-  ['WAJIB_BUKA_MULUT', 'Wajib buka mulut (tampak gigi) 2 kali', 'Bukti wajah hidup (bukan foto); absen masuk terkirim otomatis setelahnya'],
+  ['WAJIB_GERAKAN', 'Wajib gerakan wajah acak', 'Senyum, buka mulut, miring/toleh kepala, tunduk atau dongak — dipilih acak tiap absen. Bukti wajah hidup (bukan foto / video rekaman); absen masuk terkirim otomatis setelahnya'],
   ['WAJIB_GPS', 'Wajib GPS dalam radius lokasi', 'Tidak = posisi hanya dicatat'],
   ['WAJAH_PERSETUJUAN', 'Wajah baru harus disetujui admin', 'Tidak = wajah langsung aktif setelah daftar'],
   ['SIMPAN_FOTO', 'Simpan foto absen ke Google Drive', 'Tidak dicentang (disarankan) = foto hanya untuk verifikasi di HP, tidak disimpan; hemat memori Drive']
@@ -586,7 +586,7 @@ function aturSaklar() {
   const foto = document.getElementById('sk_WAJIB_FOTO').checked;
   const wajah = foto && document.getElementById('sk_WAJIB_WAJAH').checked;
   const atur = (k, aktif) => { const el = document.getElementById('sk_' + k); el.disabled = !aktif; el.parentElement.style.opacity = aktif ? 1 : .45; };
-  atur('WAJIB_QR', foto); atur('WAJIB_WAJAH', foto); atur('WAJIB_BUKA_MULUT', wajah); atur('SIMPAN_FOTO', foto);
+  atur('WAJIB_QR', foto); atur('WAJIB_WAJAH', foto); atur('WAJIB_GERAKAN', wajah); atur('SIMPAN_FOTO', foto);
 }
 async function simpanSetelan() {
   const b = document.getElementById('btnSimpanSetelan'); b.disabled = true;
@@ -993,10 +993,9 @@ async function ambilWajah() {
 
 /** Fase sekarang: true = sedang di tempat kerja (sudah MASUK, belum PULANG) */
 const fasePulang = () => !!user.sudahMasuk && !user.sudahPulang;
-/** Jumlah buka mulut yang diminta: MASUK 2 kali (lalu terkirim otomatis), PULANG cukup 1 kali (lalu tekan tombol) */
-const gerakButuh = () => fasePulang() ? 1 : 2;
 function teksGerak(n) {
-  return `😁 Buka mulut ${gerakButuh()} kali  ·  ${n}/${gerakButuh()}`;
+  if (!tantangan) return '';
+  return tantangan.butuh > 1 ? `${tantangan.label}  ·  ${n}/${tantangan.butuh}` : tantangan.label;
 }
 function tombolLanjut(teks) {
   const b = document.getElementById('btnUlang'); b.textContent = teks; b.classList.remove('hidden');
@@ -1039,7 +1038,7 @@ function kurangApa() {
   if (CFG.foto && CFG.qr && !qrText) k.push('QR code belum terbaca');
   else if (CFG.foto && !fotoData) k.push('selfie belum diambil');
   if (CFG.wajah && fotoData && !ciriWajah) k.push('wajah belum terdeteksi');
-  if (CFG.kedip && kedipN < gerakButuh()) k.push(`buka mulut ${gerakButuh()} kali belum terdeteksi`);
+  if (CFG.kedip && !gerakSelesai) k.push('gerakan wajah belum terdeteksi');
   if (CFG.gps && !pos) k.push('GPS belum terbaca');
   return k;
 }
@@ -1102,26 +1101,81 @@ function scanLoop(t) {
   requestAnimationFrame(scanLoop);
 }
 
-/* ---------- BUKA MULUT 2x (bukti wajah hidup) ---------- */
-// Mouth Aspect Ratio: celah bibir dalam dibagi lebar mulut (titik 60–67 dari 68 landmark)
-function marMulut(p) {
-  const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-  // getMouth() = titik 48–67; bibir dalam = indeks 12–19
-  return (d(p[13], p[19]) + d(p[14], p[18]) + d(p[15], p[17])) / (3 * d(p[12], p[16]));
+/* ---------- GERAKAN ACAK (bukti wajah hidup, bukan foto / video rekaman) ---------- */
+// Tiap absen aplikasi memilih satu gerakan secara acak, jadi video rekaman sulit dipakai.
+const GERAKAN = [
+  { kode: 'mulut',       ikon: '😮', teks: n => `Buka mulut (tampak gigi) ${n} kali`, ulang: true },
+  { kode: 'senyum',      ikon: '😁', teks: n => `Senyum lebar (tampak gigi) ${n} kali`, ulang: true },
+  { kode: 'miringKiri',  ikon: '↖️', teks: () => 'Miringkan kepala ke KIRI' },
+  { kode: 'miringKanan', ikon: '↗️', teks: () => 'Miringkan kepala ke KANAN' },
+  { kode: 'tolehKiri',   ikon: '👈', teks: () => 'Tolehkan kepala ke KIRI' },
+  { kode: 'tolehKanan',  ikon: '👉', teks: () => 'Tolehkan kepala ke KANAN' },
+  { kode: 'tunduk',      ikon: '⬇️', teks: () => 'Tundukkan kepala sedikit' },
+  { kode: 'dongak',      ikon: '⬆️', teks: () => 'Dongakkan kepala sedikit ke atas' }
+];
+let tantangan = null, gerakSelesai = false;
+/** Pilih gerakan acak (tidak sama dengan yang terakhir). MASUK: senyum/buka mulut 2 kali; PULANG: 1 kali. */
+function pilihTantangan() {
+  let akhir = ''; try { akhir = localStorage.getItem('gerakTerakhir') || ''; } catch (e) {}
+  const calon = GERAKAN.filter(g => g.kode !== akhir);
+  const acak = new Uint32Array(1); crypto.getRandomValues(acak);
+  const g = calon[acak[0] % calon.length];
+  try { localStorage.setItem('gerakTerakhir', g.kode); } catch (e) {}
+  const butuh = g.ulang ? (fasePulang() ? 1 : 2) : 1;
+  return Object.assign({}, g, { butuh, label: `${g.ikon} ${g.teks(butuh)}` });
 }
-/** Penghitung buka mulut: terbuka bila celah > 0,35 lebar mulut (dan ≥ 0,15 di atas posisi tertutup orang itu),
- *  tertutup lagi bila < 0,22 (atau dekat posisi tertutupnya). Satu hitungan = terbuka 0,15–4 detik lalu menutup. */
-function buatDetektorMulut() {
-  const tutup = []; let buka = false, tBuka = 0, n = 0;
+
+/** Ciri wajah dari 68 titik, diukur dalam arah garis mata (tidak terpengaruh posisi wajah di layar).
+ *  Gambar kamera TIDAK dicerminkan: mata kiri gambar = mata kanan orangnya. */
+function ciriGerak(P) {
+  const rata = (a, b) => { let x = 0, y = 0; for (let i = a; i <= b; i++) { x += P[i].x; y += P[i].y; } const n = b - a + 1; return { x: x / n, y: y / n }; };
+  const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const eL = rata(36, 41), eR = rata(42, 47), D = d(eL, eR) || 1;
+  const ux = { x: (eR.x - eL.x) / D, y: (eR.y - eL.y) / D }, uy = { x: -ux.y, y: ux.x };
+  const M = { x: (eL.x + eR.x) / 2, y: (eL.y + eR.y) / 2 };
+  const pr = q => ({ x: ((q.x - M.x) * ux.x + (q.y - M.y) * ux.y) / D, y: ((q.x - M.x) * uy.x + (q.y - M.y) * uy.y) / D });
+  const hidung = pr(P[30]), bibirAtas = pr(P[51]);
   return {
-    update(mar, t) {
-      if (!buka) { tutup.push(mar); if (tutup.length > 30) tutup.shift(); }
-      if (tutup.length < 3) return n;
-      const dasar = [...tutup].sort((a, b) => a - b)[Math.floor(tutup.length / 2)];
-      if (!buka && mar > Math.max(0.35, dasar + 0.15)) { buka = true; tBuka = t; }
-      else if (buka && mar < Math.max(0.22, dasar + 0.08)) { const lama = t - tBuka; buka = false; if (lama >= 150 && lama <= 4000) n++; }
+    roll: Math.atan2(eR.y - eL.y, eR.x - eL.x) * 180 / Math.PI, // + = miring ke kiri orangnya
+    yaw: hidung.x,                                               // + = menoleh ke kiri orangnya
+    pitch: hidung.y / (bibirAtas.y || 1),                         // + = menunduk, − = mendongak (tidak terpengaruh rahang & toleh)
+    mar: (d(P[61], P[67]) + d(P[62], P[66]) + d(P[63], P[65])) / (3 * (d(P[60], P[64]) || 1)), // celah bibir
+    lebar: d(P[48], P[54]) / D                                    // lebar mulut (senyum melebar)
+  };
+}
+const median = a => { const b = [...a].sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; };
+
+/** Penghitung untuk satu gerakan. update(ciri, t) → jumlah gerakan yang sudah terdeteksi.
+ *  Patokan = posisi wajah orang itu sendiri saat diam (beberapa frame pertama), jadi tiap orang adil. */
+function buatDetektorGerakan(kode) {
+  const awal = [];            // frame awal (wajah diam) untuk patokan posisi kepala
+  const diam = [];            // riwayat nilai saat tidak bergerak (untuk mulut / senyum)
+  let aktif = false, tMulai = 0, n = 0, tahan = 0;
+  const pose = { miringKiri: c => c.roll, miringKanan: c => -c.roll, tolehKiri: c => c.yaw, tolehKanan: c => -c.yaw,
+                 tunduk: c => c.pitch, dongak: c => -c.pitch }[kode];
+  const ambang = { miringKiri: 14, miringKanan: 14, tolehKiri: 0.2, tolehKanan: 0.2, tunduk: 0.045, dongak: 0.045 }[kode];
+  return {
+    update(c, t) {
+      if (pose) {
+        const v = pose(c);
+        if (awal.length < 5) { awal.push(v); return n; }           // ±0,5 detik pertama: patokan
+        const dasar = median(awal);
+        if (v - dasar > ambang) { if (!tahan) tahan = t; if (t - tahan >= 150) n = 1; }
+        else tahan = 0;
+        return n;
+      }
+      const nilai = kode === 'mulut' ? c.mar : c.lebar;
+      if (!aktif) { diam.push(nilai); if (diam.length > 30) diam.shift(); }
+      if (diam.length < 3) return n;
+      const dasar = median(diam);
+      const naik = kode === 'mulut' ? nilai > Math.max(0.35, dasar + 0.15) : nilai > dasar * 1.1 && nilai - dasar > 0.05;
+      const turun = kode === 'mulut' ? nilai < Math.max(0.22, dasar + 0.08) : nilai < dasar * 1.04;
+      if (!aktif && naik) { aktif = true; tMulai = t; }
+      else if (aktif && turun) { const lama = t - tMulai; aktif = false; if (lama >= 150 && lama <= 5000) n++; }
       return n;
     },
+    /** Kepala sudah kembali menghadap kamera? (dipakai sebelum foto akhir) */
+    kembali(c) { return !pose || awal.length < 5 || pose(c) - median(awal) < ambang * 0.5; },
     get n() { return n; }
   };
 }
@@ -1133,8 +1187,10 @@ function infoKedip(teks) {
 }
 const tidur = ms => new Promise(r => setTimeout(r, ms));
 async function mulaiKedip(q) {
-  kedipAktif = true; kedipN = 0;
-  const det = buatDetektorMulut(), v = document.getElementById('video'), mulai = Date.now();
+  kedipAktif = true; kedipN = 0; gerakSelesai = false;
+  tantangan = pilihTantangan();
+  const det = buatDetektorGerakan(tantangan.kode), v = document.getElementById('video'), mulai = Date.now();
+  window.__detGerak = det;
   let tanpaWajah = 0, cekQR = 0;
   setBadge(true, '✓ QR ' + q.split('|')[1]);
   infoKedip(teksGerak(0));
@@ -1148,7 +1204,7 @@ async function mulaiKedip(q) {
     const now = Date.now();
     if (now - mulai > 25000) { // terlalu lama: ulangi dari pindai QR
       kedipAktif = false; infoKedip('');
-      setBadge(false, `Gerakan mulut tidak terdeteksi. Hadapkan wajah ke kamera, lalu buka mulut lebar ${gerakButuh()} kali.`);
+      setBadge(false, 'Gerakan tidak terdeteksi. Hadapkan wajah ke kamera dan ikuti perintah di layar.');
       setTimeout(() => { if (!fotoData) { scanning = true; requestAnimationFrame(scanLoop); } }, 1500);
       return;
     }
@@ -1165,20 +1221,33 @@ async function mulaiKedip(q) {
     if (!kedipAktif) return;
     if (r) {
       tanpaWajah = 0;
-      const n = det.update(marMulut(r.landmarks.getMouth()), Date.now());
-      const butuh = gerakButuh();
+      const ciri = ciriGerak(r.landmarks.positions);
+      window.__ciriTerakhir = ciri;
+      const n = det.update(ciri, Date.now());
+      const butuh = tantangan.butuh;
       if (n !== kedipN) { kedipN = Math.min(n, butuh); infoKedip(teksGerak(kedipN)); }
-      if (kedipN >= butuh) { kedipAktif = false; return kedipSelesai(); }
+      if (kedipN >= butuh) { kedipAktif = false; gerakSelesai = true; return kedipSelesai(det, opsi); }
     } else if (++tanpaWajah === 8) {
       infoKedip('Wajah tidak terlihat. Hadapkan wajah ke kamera.');
     }
     await tidur(30);
   }
 }
-async function kedipSelesai() {
+async function kedipSelesai(det, opsi) {
+  const v = document.getElementById('video');
+  if (det && !det.kembali(window.__ciriTerakhir || {})) {
+    // gerakan kepala: tunggu wajah kembali menghadap kamera (maks 2 dtk) agar foto akhir bagus untuk pencocokan wajah
+    infoKedip('✓ Bagus! Kembali menghadap kamera');
+    const batas = Date.now() + 2000;
+    while (Date.now() < batas) {
+      let r = null; try { r = await window.deteksiLandmark(v, opsi); } catch (e) {}
+      if (r && det.kembali(ciriGerak(r.landmarks.positions))) break;
+      await tidur(60);
+    }
+  }
   infoKedip(fasePulang() ? '✓ Terverifikasi' : '✓ Gerakan terdeteksi');
-  await tidur(300); // pastikan mulut sudah menutup saat foto diambil
-  const v = document.getElementById('video'), c = document.getElementById('canvas');
+  await tidur(300); // pastikan mulut sudah menutup / kepala tegak saat foto diambil
+  const c = document.getElementById('canvas');
   c.width = v.videoWidth; c.height = v.videoHeight;
   c.getContext('2d').drawImage(v, 0, 0);
   // QR harus terlihat di foto ini atau beberapa detik sebelumnya
@@ -1188,17 +1257,17 @@ async function kedipSelesai() {
   const q2 = bacaQR(kecil);
   const q = q2 && q2.indexOf('KKB-ABSEN|') === 0 ? q2 : (qrTerakhir && Date.now() - qrTerakhir.t < 8000 ? qrTerakhir.q : null);
   if (!q) {
-    kedipN = 0; infoKedip('');
+    kedipN = 0; gerakSelesai = false; infoKedip('');
     setBadge(false, 'QR tidak terlihat lagi. Pastikan QR tetap terlihat, lalu ulangi.');
     setTimeout(() => { scanning = true; requestAnimationFrame(scanLoop); }, 1200);
     return;
   }
   const ok = await setFoto(c, q);
   infoKedip('');
-  if (!ok) { kedipN = 0; setTimeout(() => { scanning = true; requestAnimationFrame(scanLoop); }, 900); return; }
+  if (!ok) { kedipN = 0; gerakSelesai = false; setTimeout(() => { scanning = true; requestAnimationFrame(scanLoop); }, 900); return; }
   kirimOtomatis();
 }
-/** MASUK (buka mulut 2x): langsung terkirim. PULANG (buka mulut 1x): verifikasi selesai, karyawan menekan ABSEN PULANG. */
+/** MASUK: setelah gerakan acak, langsung terkirim. PULANG: verifikasi selesai, karyawan menekan ABSEN PULANG. */
 function kirimOtomatis() {
   if (!fasePulang()) return kirim('Masuk');
   const sekarang = new Date().toTimeString().slice(0, 5);
@@ -1240,7 +1309,7 @@ async function setFoto(c, q) {
   p.src = fotoData; p.classList.remove('hidden');
   document.getElementById('video').classList.add('hidden');
   document.getElementById('btnUlang').classList.remove('hidden');
-  setBadge(true, '✓ ' + [q ? 'QR ' + q.split('|')[1] : 'Selfie diambil', CFG.wajah ? 'wajah terdeteksi' : '', CFG.kedip && kedipN >= gerakButuh() ? `buka mulut ${gerakButuh()}x` : ''].filter(String).join(' · '));
+  setBadge(true, '✓ ' + [q ? 'QR ' + q.split('|')[1] : 'Selfie diambil', CFG.wajah ? 'wajah terdeteksi' : '', CFG.kedip && gerakSelesai ? 'gerakan OK' : ''].filter(String).join(' · '));
   updateTombol();
   return true;
 }
@@ -1292,7 +1361,7 @@ function hapusTercatat() {
 
 function ulangFoto() {
   hapusTercatat();
-  qrText = fotoData = ciriWajah = null; kedipN = 0; kedipAktif = false; infoKedip(''); msg('absenMsg', '');
+  qrText = fotoData = ciriWajah = null; kedipN = 0; gerakSelesai = false; kedipAktif = false; infoKedip(''); msg('absenMsg', '');
   if (!stream && CFG.foto) { // kamera mati (setelah absen pulang): nyalakan lagi untuk absen berikutnya
     document.getElementById('btnUlang').classList.add('hidden');
     document.getElementById('preview').classList.add('hidden');
@@ -1334,7 +1403,7 @@ async function kirim(jenis) {
   msg('absenMsg', 'Menyimpan…', true);
   try {
     // Foto hanya dikirim bila admin menyalakan "Simpan foto absen"; selain itu cukup hasil pemeriksaannya
-    const r = await api('absen', { jenis, qr: qrText, foto: CFG.simpanFoto ? fotoData : '', wajah: ciriWajah, gerak: kedipN, kedip: kedipN,
+    const r = await api('absen', { jenis, qr: qrText, foto: CFG.simpanFoto ? fotoData : '', wajah: ciriWajah, gerak: gerakSelesai ? (jenis === 'Pulang' ? 1 : 2) : 0, gerakan: tantangan ? tantangan.kode : '',
                                    lat: pos ? pos.latitude : '', lng: pos ? pos.longitude : '' });
     let t = `✅ ${r.pesan}<br>Lokasi: ${r.lokasi}${r.jarak !== '' ? ' (' + r.jarak + ' m)' : ''}`;
     if (r.status === 'Masuk Ulang') t += '<br>Masuk lagi setelah absen pulang';
@@ -1345,7 +1414,7 @@ async function kirim(jenis) {
     const jamPenuh = (r.pesan.match(/\d{2}:\d{2}:\d{2}/) || [r.jam])[0];
     if (jenis === 'Pulang') {
       // pulang tercatat: PULANG abu-abu, MASUK aktif lagi. Kamera buram 60 dtk, lalu dimatikan; masuk berikutnya lewat tombol.
-      scanning = false; qrText = fotoData = ciriWajah = null; kedipN = 0;
+      scanning = false; qrText = fotoData = ciriWajah = null; kedipN = 0; gerakSelesai = false;
       if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
       ['btnSelfie', 'btnFallback'].forEach(id => document.getElementById(id).classList.add('hidden'));
       updateTombol();
@@ -1355,7 +1424,7 @@ async function kirim(jenis) {
       }
     } else if (CFG.kedip) {
       // mode gerakan: kamera tidak langsung memindai lagi (agar tidak terpicu tanpa sengaja)
-      kedipN = 0; fotoData = null; updateTombol();
+      kedipN = 0; gerakSelesai = false; fotoData = null; updateTombol();
       tombolLanjut('📸 Mulai absen pulang');
       tampilTercatat('Masuk', jamPenuh);
     } else if (CFG.foto) {
