@@ -534,7 +534,7 @@ const SAKLAR = [
   ['WAJIB_FOTO', 'Wajib selfie saat absen', 'Tidak = absen tanpa kamera (QR & wajah ikut tidak dipakai)'],
   ['WAJIB_QR', 'Wajib QR code lokasi di foto', 'Mencegah fake GPS'],
   ['WAJIB_WAJAH', 'Wajib wajah cocok', 'Mencegah titip absen'],
-  ['WAJIB_GERAKAN', 'Wajib gerakan wajah acak', 'Senyum, buka mulut, miring/toleh kepala, tunduk atau dongak — dipilih acak tiap absen. Bukti wajah hidup (bukan foto / video rekaman); absen masuk terkirim otomatis setelahnya'],
+  ['WAJIB_GERAKAN', 'Wajib buka mulut (tampak gigi)', 'Masuk 2 kali, pulang 1 kali. Bukti wajah hidup (bukan foto); absen masuk terkirim otomatis setelahnya'],
   ['WAJIB_GPS', 'Wajib GPS dalam radius lokasi', 'Tidak = posisi hanya dicatat'],
   ['WAJAH_PERSETUJUAN', 'Wajah baru harus disetujui admin', 'Tidak = wajah langsung aktif setelah daftar'],
   ['SIMPAN_FOTO', 'Simpan foto absen ke Google Drive', 'Tidak dicentang (disarankan) = foto hanya untuk verifikasi di HP, tidak disimpan; hemat memori Drive']
@@ -1102,16 +1102,9 @@ function scanLoop(t) {
 }
 
 /* ---------- GERAKAN ACAK (bukti wajah hidup, bukan foto / video rekaman) ---------- */
-// Server memilih satu gerakan acak per karyawan per hari (beda tiap hari), jadi video rekaman sulit dipakai.
-const GERAKAN = [
-  { kode: 'mulut',       ikon: '😮', teks: n => `Buka mulut (tampak gigi) ${n} kali`, ulang: true },
-  { kode: 'senyum',      ikon: '😁', teks: n => `Senyum lebar (tampak gigi) ${n} kali`, ulang: true },
-  { kode: 'miringKiri',  ikon: '↖️', teks: () => 'Miringkan kepala ke KIRI' },
-  { kode: 'miringKanan', ikon: '↗️', teks: () => 'Miringkan kepala ke KANAN' },
-  { kode: 'tolehKiri',   ikon: '👈', teks: () => 'Tolehkan kepala ke KIRI' },
-  { kode: 'tolehKanan',  ikon: '👉', teks: () => 'Tolehkan kepala ke KANAN' },
-  { kode: 'tunduk',      ikon: '⬇️', teks: () => 'Tundukkan kepala sedikit' },
-  { kode: 'dongak',      ikon: '⬆️', teks: () => 'Dongakkan kepala sedikit ke atas' }
+// Gerakan: buka mulut tampak gigi (MASUK 2 kali, PULANG 1 kali).
+const GERAKAN = [   // sengaja hanya satu gerakan agar karyawan tidak bingung
+  { kode: 'mulut', ikon: '😮', teks: n => `Buka mulut (tampak gigi) ${n} kali`, ulang: true }
 ];
 let tantangan = null, gerakSelesai = false;
 /** Gerakan hari ini ditentukan server (sama sepanjang hari, beda dengan kemarin). MASUK: senyum/buka mulut 2 kali; PULANG: 1 kali. */
