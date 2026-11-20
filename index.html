@@ -1044,9 +1044,90 @@ function kurangApa() {
 }
 
 /* ---------- KAMERA + SCAN QR ---------- */
+/** Buka kamera depan dengan resolusi setinggi yang didukung HP (QR kecil/jauh lebih mudah terbaca).
+ *  Bila HP menolak permintaan itu, coba permintaan yang lebih sederhana. */
+async function bukaKamera() {
+  const coba = [
+    // resolusi asli kamera setinggi mungkin, TANPA dipotong/diregangkan (QR di pinggir gambar tetap terlihat)
+    { facingMode: 'user', width: { ideal: 2560 }, height: { ideal: 2560 }, resizeMode: 'none' },
+    { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1280 } },
+    { facingMode: 'user' },
+    true
+  ];
+  let galat;
+  for (const video of coba) {
+    try {
+      const st = await navigator.mediaDevices.getUserMedia({ video, audio: false });
+      const tr = st.getVideoTracks()[0];
+      try { // fokus otomatis terus-menerus bila HP mendukung (membantu QR di dinding)
+        const cap = tr.getCapabilities ? tr.getCapabilities() : {};
+        if (cap.focusMode && cap.focusMode.indexOf('continuous') > -1) await tr.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+      } catch (e) {}
+      return st;
+    } catch (e) { galat = e; if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) break; }
+  }
+  throw galat;
+}
+
+/* Pembaca QR bawaan HP (BarcodeDetector, ada di Chrome Android) — lebih kuat untuk QR kecil/buram; jsQR sebagai cadangan */
+let detektorQR = null;
+try {
+  if ('BarcodeDetector' in window) (BarcodeDetector.getSupportedFormats ? BarcodeDetector.getSupportedFormats() : Promise.resolve(['qr_code']))
+    .then(f => { if (f.indexOf('qr_code') > -1) detektorQR = new BarcodeDetector({ formats: ['qr_code'] }); }).catch(() => {});
+} catch (e) {}
+
+/** Naikkan kontras (ruangan redup / lampu dari belakang / QR pudar): abu-abu lalu rentangkan terang-gelap */
+function kontras(c) {
+  const x = c.getContext('2d', { willReadFrequently: true }), img = x.getImageData(0, 0, c.width, c.height), d = img.data;
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < d.length; i += 4) { const g = (d[i] * 77 + d[i + 1] * 150 + d[i + 2] * 29) >> 8; d[i] = g; hist[g]++; }
+  const n = d.length / 4; let a = 0, b = 255, jml = 0;
+  while (a < 255 && (jml += hist[a]) < n * 0.02) a++;
+  jml = 0; while (b > 0 && (jml += hist[b]) < n * 0.02) b--;
+  const k = 255 / Math.max(1, b - a);
+  for (let i = 0; i < d.length; i += 4) { const g = Math.max(0, Math.min(255, (d[i] - a) * k)); d[i] = d[i + 1] = d[i + 2] = g; }
+  x.putImageData(img, 0, 0);
+}
+
+/** Cari QR di satu gambar kamera. Tiap panggilan mencoba cara berbeda secara bergiliran, jadi dalam ±3 detik
+ *  semua cara sudah dicoba: seluruh gambar (kecil & resolusi penuh), potongan kiri/kanan/atas/bawah/tengah
+ *  yang diperbesar (QR kecil/jauh), dan versi kontras tinggi (ruangan redup / QR pudar). */
+const CARA_QR = ['kecil', 'penuh', 'kiri', 'kanan', 'tengah', 'atas', 'bawah', 'kontras'];
+let giliranQR = 0;
+const kanvasQR = document.createElement('canvas');
+async function cariQR(sumber) {
+  const W = sumber.videoWidth || sumber.naturalWidth || sumber.width, H = sumber.videoHeight || sumber.naturalHeight || sumber.height;
+  if (!W || !H) return null;
+  if (detektorQR) {
+    try { const h = await detektorQR.detect(sumber); const t = h.find(x => x.rawValue); if (t) return t.rawValue; } catch (e) {}
+  }
+  const cara = CARA_QR[giliranQR++ % CARA_QR.length];
+  let sx = 0, sy = 0, sw = W, sh = H;
+  if (cara === 'kiri') sw = W * 0.6;
+  else if (cara === 'kanan') { sx = W * 0.4; sw = W * 0.6; }
+  else if (cara === 'atas') sh = H * 0.6;
+  else if (cara === 'bawah') { sy = H * 0.4; sh = H * 0.6; }
+  else if (cara === 'tengah') { sx = W * 0.2; sy = H * 0.2; sw = W * 0.6; sh = H * 0.6; }
+  const panjang = Math.max(sw, sh);
+  const skala = cara === 'kecil' ? Math.min(1, 900 / panjang)
+    : cara === 'penuh' || cara === 'kontras' ? Math.min(1, 1600 / panjang)
+    : Math.min(2, 1100 / panjang);                     // potongan: diperbesar sampai ±1100 px (QR kecil jadi lebih besar)
+  const c = kanvasQR; // kanvas sendiri, agar foto absen di #canvas tidak tertimpa
+  c.width = Math.max(1, Math.round(sw * skala)); c.height = Math.max(1, Math.round(sh * skala));
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+  x.drawImage(sumber, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  if (cara === 'kontras') kontras(c);
+  return bacaQR(c);
+}
+/** Baca QR dari foto akhir: coba semua cara sekaligus */
+async function cariQRSemua(sumber) {
+  for (let i = 0; i < CARA_QR.length; i++) { const q = await cariQR(sumber); if (q) return q; }
+  return null;
+}
 async function mulaiKamera(mode) {
   try {
-    if (!stream) stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false });
+    if (!stream) stream = await bukaKamera();
     const v = document.getElementById('video');
     v.classList.remove('hidden');
     v.srcObject = stream; await v.play();
@@ -1078,25 +1159,27 @@ function bacaQR(canvas) {
   return r && r.data ? r.data : null;
 }
 
-let lastScan = 0;
-function scanLoop(t) {
+let lastScan = 0, sibukQR = false, mulaiCari = 0;
+async function scanLoop(t) {
   if (!scanning) return;
-  if (t - lastScan > 350) {
-    lastScan = t;
+  if (!sibukQR && t - lastScan > 250) {
+    lastScan = t; sibukQR = true;
     const v = document.getElementById('video');
-    if (v.videoWidth) {
-      const c = document.getElementById('canvas');
-      const s = Math.min(1, 900 / v.videoWidth);
-      c.width = v.videoWidth * s; c.height = v.videoHeight * s;
-      c.getContext('2d', { willReadFrequently: true }).drawImage(v, 0, 0, c.width, c.height);
-      const q = bacaQR(c);
-      if (q && q.indexOf('KKB-ABSEN|') === 0) {
-        qrTerakhir = { q, t: Date.now() };
-        if (CFG.kedip) { scanning = false; mulaiKedip(q); } else ambilFoto(q);
-        return;
+    try {
+      if (v.videoWidth) {
+        if (!mulaiCari) mulaiCari = Date.now();
+        const q = await cariQR(v);
+        if (!scanning) return;
+        if (q && q.indexOf('KKB-ABSEN|') === 0) {
+          qrTerakhir = { q, t: Date.now() }; mulaiCari = 0;
+          if (CFG.kedip) { scanning = false; mulaiKedip(q); } else ambilFoto(q);
+          return;
+        }
+        setBadge(false, q ? 'QR bukan QR absensi KKB'
+          : Date.now() - mulaiCari > 8000 ? 'QR belum terbaca: mundur/maju sedikit, QR harus utuh & tidak silau, tempat terang'
+          : 'Mencari QR code… arahkan agar QR terlihat');
       }
-      setBadge(false, q ? 'QR bukan QR absensi KKB' : 'Mencari QR code… arahkan agar QR terlihat');
-    }
+    } finally { sibukQR = false; }
   }
   requestAnimationFrame(scanLoop);
 }
@@ -1225,11 +1308,8 @@ async function mulaiKedip(q) {
     }
     if (now - cekQR > 1000) { // QR masih terlihat? (perbarui waktu terakhir terlihat)
       cekQR = now;
-      const c = document.getElementById('canvas'), s = Math.min(1, 900 / v.videoWidth);
-      c.width = v.videoWidth * s; c.height = v.videoHeight * s;
-      c.getContext('2d', { willReadFrequently: true }).drawImage(v, 0, 0, c.width, c.height);
-      const q2 = bacaQR(c);
-      if (q2 && q2.indexOf('KKB-ABSEN|') === 0) qrTerakhir = { q: q2, t: now };
+      const q2 = await cariQR(v);
+      if (q2 && q2.indexOf('KKB-ABSEN|') === 0) qrTerakhir = { q: q2, t: Date.now() };
     }
     let r = null;
     try { r = await window.deteksiLandmark(v, opsi); } catch (e) { r = null; }
@@ -1270,11 +1350,10 @@ async function kedipSelesai(det, opsi) {
   c.width = v.videoWidth; c.height = v.videoHeight;
   c.getContext('2d').drawImage(v, 0, 0);
   // QR harus terlihat di foto ini atau beberapa detik sebelumnya
-  const kecil = document.createElement('canvas'), s = Math.min(1, 900 / c.width);
-  kecil.width = c.width * s; kecil.height = c.height * s;
-  kecil.getContext('2d', { willReadFrequently: true }).drawImage(c, 0, 0, kecil.width, kecil.height);
-  const q2 = bacaQR(kecil);
-  const q = q2 && q2.indexOf('KKB-ABSEN|') === 0 ? q2 : (qrTerakhir && Date.now() - qrTerakhir.t < 8000 ? qrTerakhir.q : null);
+  // QR terbaca dalam 8 detik terakhir sudah cukup; bila tidak, baca ulang dari foto ini dengan semua cara
+  let q = qrTerakhir && Date.now() - qrTerakhir.t < 8000 ? qrTerakhir.q : null;
+  if (!q) { const salin = document.createElement('canvas'); salin.width = c.width; salin.height = c.height; salin.getContext('2d').drawImage(c, 0, 0);
+    const q2 = await cariQRSemua(salin); if (q2 && q2.indexOf('KKB-ABSEN|') === 0) q = q2; }
   if (!q) {
     kedipN = 0; gerakSelesai = false; infoKedip('');
     setBadge(false, 'QR tidak terlihat lagi. Pastikan QR tetap terlihat, lalu ulangi.');
@@ -1349,13 +1428,14 @@ function dariFile(input) {
   const f = input.files[0]; if (!f) return;
   if (CFG.kedip) { setBadge(false, 'Deteksi gerakan mulut butuh kamera langsung. Izinkan akses kamera lalu muat ulang.'); input.value = ''; return; }
   const img = new Image();
-  img.onload = () => {
+  img.onload = async () => {
     const c = document.getElementById('canvas');
     const s = Math.min(1, 1600 / Math.max(img.width, img.height));
     c.width = img.width * s; c.height = img.height * s;
     c.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0, c.width, c.height);
     if (!CFG.qr) { setFoto(c, null); URL.revokeObjectURL(img.src); input.value = ''; return; }
-    const q = bacaQR(c);
+    const salin = document.createElement('canvas'); salin.width = c.width; salin.height = c.height; salin.getContext('2d').drawImage(c, 0, 0);
+    const q = await cariQRSemua(salin);
     if (q && q.indexOf('KKB-ABSEN|') === 0) setFoto(c, q).then(ok => { if (!ok) { qrText = fotoData = ciriWajah = null; updateTombol(); } });
     else { setBadge(false, 'QR tidak terbaca di foto. Ulangi, dekatkan ke QR.'); qrText = fotoData = ciriWajah = null; updateTombol(); }
     URL.revokeObjectURL(img.src); input.value = '';
